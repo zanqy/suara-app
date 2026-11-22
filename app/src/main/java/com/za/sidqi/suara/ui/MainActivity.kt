@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
@@ -673,7 +674,7 @@ private fun QueueSheet(
             Text("Antrean kosong.", fontFamily = DmSans, fontSize = 12.sp, color = Muted)
         } else {
             LazyColumn {
-                items(queue, key = { it.id }) { track ->
+                itemsIndexed(queue) { index, track ->
                     Row(
                         Modifier.fillMaxWidth().clickable { onPlay(track) }.padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -689,7 +690,7 @@ private fun QueueSheet(
                             )
                             Text(track.artist ?: "", fontFamily = Plex, fontSize = 9.sp, color = Muted)
                         }
-                        IconButton(onClick = { onRemove(queue.indexOf(track)) }) {
+                        IconButton(onClick = { onRemove(index) }) {
                             Text("×", color = Muted, fontSize = 18.sp)
                         }
                     }
