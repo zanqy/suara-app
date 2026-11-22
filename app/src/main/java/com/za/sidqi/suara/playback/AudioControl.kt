@@ -16,9 +16,13 @@ data class EqBand(
 
 data class EqState(
     val available: Boolean = false,
+    val engine: String = "",
     val enabled: Boolean = false,
     val preset: String = "Datar",
-    val bands: List<EqBand> = emptyList()
+    val bands: List<EqBand> = emptyList(),
+    val preampMb: Int = 0,
+    val preampMinMb: Int = 0,
+    val preampMaxMb: Int = 0
 )
 
 object AudioState {
@@ -36,11 +40,13 @@ object AudioSettings {
     private const val KEY_EQ_ENABLED = "eq_enabled"
     private const val KEY_EQ_PRESET = "eq_preset"
     private const val KEY_EQ_BANDS = "eq_bands"
+    private const val KEY_EQ_PREAMP = "eq_preamp"
     private const val KEY_MIX = "mix_mode"
 
     const val ACTION_EQ_ENABLED = "com.za.sidqi.suara.EQ_ENABLED"
     const val ACTION_EQ_PRESET = "com.za.sidqi.suara.EQ_PRESET"
     const val ACTION_EQ_BAND = "com.za.sidqi.suara.EQ_BAND"
+    const val ACTION_EQ_PREAMP = "com.za.sidqi.suara.EQ_PREAMP"
     const val ACTION_EQ_REFRESH = "com.za.sidqi.suara.EQ_REFRESH"
     const val ACTION_MIX_MODE = "com.za.sidqi.suara.MIX_MODE"
 
@@ -70,6 +76,13 @@ object AudioSettings {
 
     fun setEqPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_EQ_PRESET, preset).apply()
+    }
+
+    fun eqPreamp(context: Context): Int =
+        prefs(context).getInt(KEY_EQ_PREAMP, 0).coerceIn(-1200, 600)
+
+    fun setEqPreamp(context: Context, valueMb: Int) {
+        prefs(context).edit().putInt(KEY_EQ_PREAMP, valueMb.coerceIn(-1200, 600)).apply()
     }
 
     fun eqBands(context: Context): IntArray? =

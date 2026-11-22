@@ -10,9 +10,11 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +55,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,10 +72,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -80,6 +90,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
@@ -90,6 +102,7 @@ import com.za.sidqi.suara.R
 import com.za.sidqi.suara.data.PlaylistSummary
 import com.za.sidqi.suara.playback.AudioSettings
 import com.za.sidqi.suara.playback.AudioState
+import com.za.sidqi.suara.playback.EqBand
 import com.za.sidqi.suara.playback.EqState
 import com.za.sidqi.suara.data.TrackEntity
 import com.za.sidqi.suara.playback.PlayerHolder
@@ -173,6 +186,7 @@ private object SuaraIcons {
         "Tune",
         "M3,17v2h6v-2H3zM3,5v2h10V5H3zM13,21v-2h8v-2h-8v-2h-2v6h2zM7,9v2H3v2h4v2h2V9H7zM21,13v-2H11v2h10zM15,9h2V7h4V5h-4V3h-2v6z"
     )
+    val Back = suaraIcon("Back", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z")
 }
 
 private val Fraunces = FontFamily(Font(R.font.fraunces))
@@ -482,45 +496,57 @@ private fun SuaraRoot() {
     }
 
     if (showAudio) {
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = { showAudio = false },
-            containerColor = Surface
-        ) {
-            AudioSheet(
-                appVolume = appVolume,
-                onVolume = { value ->
-                    appVolume = value
-                    controller?.volume = value
-                    AudioSettings.setAppVolume(context, value)
-                },
-                eqState = eqState,
-                onEqEnabled = { enabled ->
-                    AudioSettings.setEqEnabled(context, enabled)
-                    AudioSettings.send(context, AudioSettings.ACTION_EQ_ENABLED) {
-                        putExtra(AudioSettings.EXTRA_ENABLED, enabled)
-                    }
-                },
-                onPreset = { preset ->
-                    AudioSettings.setEqPreset(context, preset)
-                    AudioSettings.send(context, AudioSettings.ACTION_EQ_PRESET) {
-                        putExtra(AudioSettings.EXTRA_PRESET, preset)
-                    }
-                },
-                onBand = { band, level ->
-                    AudioSettings.send(context, AudioSettings.ACTION_EQ_BAND) {
-                        putExtra(AudioSettings.EXTRA_BAND, band)
-                        putExtra(AudioSettings.EXTRA_LEVEL, level)
-                    }
-                },
-                mixMode = mixMode,
-                onMixMode = { enabled ->
-                    mixMode = enabled
-                    AudioSettings.setMixMode(context, enabled)
-                    AudioSettings.send(context, AudioSettings.ACTION_MIX_MODE) {
-                        putExtra(AudioSettings.EXTRA_ENABLED, enabled)
-                    }
-                }
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
             )
+        ) {
+            Surface(Modifier.fillMaxSize(), color = Bg) {
+                AudioScreen(
+                    appVolume = appVolume,
+                    onVolume = { value ->
+                        appVolume = value
+                        controller?.volume = value
+                        AudioSettings.setAppVolume(context, value)
+                    },
+                    eqState = eqState,
+                    onEqEnabled = { enabled ->
+                        AudioSettings.setEqEnabled(context, enabled)
+                        AudioSettings.send(context, AudioSettings.ACTION_EQ_ENABLED) {
+                            putExtra(AudioSettings.EXTRA_ENABLED, enabled)
+                        }
+                    },
+                    onPreset = { preset ->
+                        AudioSettings.setEqPreset(context, preset)
+                        AudioSettings.send(context, AudioSettings.ACTION_EQ_PRESET) {
+                            putExtra(AudioSettings.EXTRA_PRESET, preset)
+                        }
+                    },
+                    onBand = { band, level ->
+                        AudioSettings.send(context, AudioSettings.ACTION_EQ_BAND) {
+                            putExtra(AudioSettings.EXTRA_BAND, band)
+                            putExtra(AudioSettings.EXTRA_LEVEL, level)
+                        }
+                    },
+                    onPreamp = { level ->
+                        AudioSettings.setEqPreamp(context, level)
+                        AudioSettings.send(context, AudioSettings.ACTION_EQ_PREAMP) {
+                            putExtra(AudioSettings.EXTRA_LEVEL, level)
+                        }
+                    },
+                    mixMode = mixMode,
+                    onMixMode = { enabled ->
+                        mixMode = enabled
+                        AudioSettings.setMixMode(context, enabled)
+                        AudioSettings.send(context, AudioSettings.ACTION_MIX_MODE) {
+                            putExtra(AudioSettings.EXTRA_ENABLED, enabled)
+                        }
+                    },
+                    onBack = { showAudio = false }
+                )
+            }
         }
     }
 
@@ -923,84 +949,108 @@ private fun NowPlaying(
 }
 
 @Composable
-private fun AudioSheet(
+private fun AudioScreen(
     appVolume: Float,
     onVolume: (Float) -> Unit,
     eqState: EqState,
     onEqEnabled: (Boolean) -> Unit,
     onPreset: (String) -> Unit,
     onBand: (Int, Int) -> Unit,
+    onPreamp: (Int) -> Unit,
     mixMode: Boolean,
-    onMixMode: (Boolean) -> Unit
+    onMixMode: (Boolean) -> Unit,
+    onBack: () -> Unit
 ) {
     Column(
         Modifier
-            .fillMaxWidth()
-            .heightIn(max = 640.dp)
+            .fillMaxSize()
+            .background(Bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp)
     ) {
-        Text("Audio", fontFamily = Fraunces, fontSize = 22.sp, color = Ink)
-        Text("VOLUME APLIKASI", fontFamily = Plex, fontSize = 10.sp, color = Muted, letterSpacing = 1.sp)
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (appVolume <= 0.01f) SuaraIcons.VolumeOff else SuaraIcons.VolumeUp,
-                contentDescription = "Volume aplikasi",
-                tint = Muted,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Slider(
-                value = appVolume,
-                onValueChange = onVolume,
-                valueRange = 0f..1f,
-                modifier = Modifier.weight(1f),
-                colors = androidx.compose.material3.SliderDefaults.colors(
-                    thumbColor = Coral,
-                    activeTrackColor = Coral,
-                    inactiveTrackColor = Line
-                )
-            )
-            Text(
-                "${(appVolume * 100).roundToInt()}%",
-                fontFamily = Plex,
-                fontSize = 11.sp,
-                color = Muted,
-                modifier = Modifier.width(40.dp)
-            )
-        }
-        Spacer(Modifier.height(20.dp))
-
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("EQUALIZER", fontFamily = Plex, fontSize = 10.sp, color = Ink, letterSpacing = 1.sp)
-                Text(
-                    "Atur nada musik. Band mengikuti perangkat.",
-                    fontFamily = DmSans, fontSize = 11.sp, color = Muted
-                )
+            IconButton(onClick = onBack) {
+                Icon(SuaraIcons.Back, contentDescription = "Kembali", tint = Ink, modifier = Modifier.size(22.dp))
             }
-            Switch(
-                checked = eqState.enabled,
-                onCheckedChange = onEqEnabled,
-                enabled = eqState.available
-            )
+            Spacer(Modifier.weight(1f))
+            Text("AUDIO", fontFamily = Plex, fontSize = 9.sp, color = Muted, letterSpacing = 2.sp)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onBack) {
+                Text("SELESAI", fontFamily = Plex, fontSize = 9.sp, color = Coral)
+            }
         }
-        if (!eqState.available) {
+
+        Column(Modifier.padding(horizontal = 20.dp)) {
             Text(
-                "Equalizer siap setelah musik mulai diputar. Kalau tetap kosong, perangkat ini tidak mendukung equalizer.",
-                fontFamily = DmSans, fontSize = 11.sp, color = Muted,
-                modifier = Modifier.padding(top = 8.dp)
+                "Equalizer.",
+                fontFamily = Fraunces,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                color = Ink
             )
-        } else {
-            Spacer(Modifier.height(10.dp))
+            Text(
+                when (eqState.engine) {
+                    "DYNAMICS" -> "10 BAND · DYNAMICS PROCESSING"
+                    "EQUALIZER" -> "${eqState.bands.size} BAND · FALLBACK EQUALIZER"
+                    else -> "MENUNGGU AUDIO"
+                },
+                fontFamily = Plex,
+                fontSize = 9.sp,
+                color = Muted,
+                letterSpacing = 1.2.sp
+            )
+            Spacer(Modifier.height(18.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Surface),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("VOLUME APLIKASI", fontFamily = Plex, fontSize = 8.sp, color = Muted, letterSpacing = 1.2.sp)
+                        Text("${(appVolume * 100).roundToInt()}%", fontFamily = Plex, fontSize = 10.sp, color = Ink)
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (appVolume <= 0.01f) SuaraIcons.VolumeOff else SuaraIcons.VolumeUp,
+                            contentDescription = "Volume aplikasi",
+                            tint = Muted,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Slider(
+                            value = appVolume,
+                            onValueChange = onVolume,
+                            valueRange = 0f..1f,
+                            modifier = Modifier.weight(1f),
+                            colors = androidx.compose.material3.SliderDefaults.colors(
+                                thumbColor = Coral,
+                                activeTrackColor = Coral,
+                                inactiveTrackColor = Line
+                            )
+                        )
+                        Text(
+                            formatDb((appVolume - 1f).times(20f).roundToInt() * 100),
+                            fontFamily = Plex,
+                            fontSize = 9.sp,
+                            color = Muted,
+                            modifier = Modifier.width(58.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 AudioSettings.presets.forEach { preset ->
                     FilterChip(
@@ -1011,51 +1061,320 @@ private fun AudioSheet(
                             selectedContainerColor = Coral,
                             selectedLabelColor = Color(0xFF14180F),
                             labelColor = Muted,
-                            containerColor = Color(0xFF101410)
+                            containerColor = Surface
                         )
                     )
                 }
             }
-            eqState.bands.forEach { band ->
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatHz(band.freqHz), fontFamily = Plex, fontSize = 9.sp, color = Muted)
-                    Text(
-                        "%.1f dB".format(band.levelMb / 100f),
-                        fontFamily = Plex, fontSize = 9.sp, color = Muted
+
+            Spacer(Modifier.height(12.dp))
+            if (!eqState.available || eqState.bands.isEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Surface),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Equalizer belum aktif.", fontFamily = Fraunces, fontSize = 18.sp, color = Ink)
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "Putar satu lagu dulu supaya audio session ExoPlayer aktif. Kalau tetap kosong, perangkat ini tidak mendukung equalizer.",
+                            fontFamily = DmSans, fontSize = 12.sp, color = Muted
+                        )
+                    }
+                }
+            } else {
+                EqCurveCard(eqState = eqState, onBand = onBand)
+                Spacer(Modifier.height(12.dp))
+                EqFadersCard(eqState = eqState, onBand = onBand)
+                if (eqState.preampMaxMb > eqState.preampMinMb) {
+                    Spacer(Modifier.height(12.dp))
+                    PreampCard(eqState = eqState, onPreamp = onPreamp)
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Surface),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("MODE CAMPUR AUDIO", fontFamily = Plex, fontSize = 8.sp, color = Ink, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "Musik tetap berbunyi saat aplikasi lain memutar audio. Notifikasi bisa tumpang tindih.",
+                            fontFamily = DmSans, fontSize = 11.sp, color = Muted
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(checked = mixMode, onCheckedChange = onMixMode)
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = {
+                    onPreset("Datar")
+                    if (eqState.preampMaxMb > eqState.preampMinMb) onPreamp(0)
+                }) {
+                    Text("RESET KE DATAR", fontFamily = Plex, fontSize = 9.sp, color = Muted)
+                }
+                Text("AUTO-SIMPAN", fontFamily = Plex, fontSize = 8.sp, color = Mint, letterSpacing = 1.sp)
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun EqCurveCard(eqState: EqState, onBand: (Int, Int) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("RESPONS FREKUENSI", fontFamily = Plex, fontSize = 8.sp, color = Muted, letterSpacing = 1.sp)
+                Text("${eqState.bands.size} BAND", fontFamily = Plex, fontSize = 8.sp, color = Mint, letterSpacing = 1.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            EqCurve(eqState = eqState, onBand = onBand)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                eqState.bands.forEach { band ->
+                    Text(formatHz(band.freqHz), fontFamily = Plex, fontSize = 7.sp, color = Muted)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EqCurve(eqState: EqState, onBand: (Int, Int) -> Unit) {
+    val bands = eqState.bands
+    if (bands.isEmpty()) return
+    val minMb = bands.minOf { it.minMb }.toFloat()
+    val maxMb = bands.maxOf { it.maxMb }.toFloat()
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .pointerInput(bands) {
+                fun update(position: Offset) {
+                    val n = bands.size
+                    if (n == 0) return
+                    val width = size.width.toFloat()
+                    val height = size.height.toFloat()
+                    val top = 8.dp.toPx()
+                    val bottom = height - 8.dp.toPx()
+                    if (width <= 0f || bottom <= top) return
+                    val index = ((position.x / width) * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                    val ratio = ((position.y - top) / (bottom - top)).coerceIn(0f, 1f)
+                    val level = (maxMb - ratio * (maxMb - minMb)).roundToInt()
+                    onBand(index, level.coerceIn(minMb.toInt(), maxMb.toInt()))
+                }
+                detectDragGestures(
+                    onDragStart = { update(it) },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        update(change.position)
+                    }
+                )
+            }
+    ) {
+        val n = bands.size
+        val top = 8.dp.toPx()
+        val bottom = size.height - 8.dp.toPx()
+        val width = size.width
+        fun x(index: Int): Float =
+            if (n <= 1) width / 2f else index * width / (n - 1f)
+        fun y(level: Int): Float =
+            bottom - ((level - minMb) / (maxMb - minMb)) * (bottom - top)
+
+        for (g in 0..4) {
+            val gy = top + (bottom - top) * g / 4f
+            drawLine(
+                color = Color(0xFF2A312A),
+                start = Offset(0f, gy),
+                end = Offset(width, gy),
+                strokeWidth = 1.dp.toPx()
+            )
+        }
+        bands.forEachIndexed { index, _ ->
+            drawLine(
+                color = Color(0xFF252C25),
+                start = Offset(x(index), top),
+                end = Offset(x(index), bottom),
+                strokeWidth = 1.dp.toPx()
+            )
+        }
+        drawLine(
+            color = Color(0xFF4B554A),
+            start = Offset(0f, y(0)),
+            end = Offset(width, y(0)),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 7f))
+        )
+
+        val fill = Path()
+        val line = Path()
+        fill.moveTo(x(0), y(bands[0].levelMb))
+        line.moveTo(x(0), y(bands[0].levelMb))
+        for (i in 1 until n) {
+            val prevX = x(i - 1)
+            val prevY = y(bands[i - 1].levelMb)
+            val nextX = x(i)
+            val nextY = y(bands[i].levelMb)
+            val mid = (prevX + nextX) / 2f
+            fill.cubicTo(mid, prevY, mid, nextY, nextX, nextY)
+            line.cubicTo(mid, prevY, mid, nextY, nextX, nextY)
+        }
+        fill.lineTo(x(n - 1), y(0))
+        fill.lineTo(x(0), y(0))
+        fill.close()
+        drawPath(fill, color = Coral.copy(alpha = 0.16f))
+        drawPath(
+            line,
+            color = Coral,
+            style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+        )
+        bands.forEachIndexed { index, band ->
+            val center = Offset(x(index), y(band.levelMb))
+            drawCircle(Color(0xFF0B0D0B), radius = 5.2.dp.toPx(), center = center)
+            drawCircle(Amber, radius = 3.3.dp.toPx(), center = center)
+        }
+    }
+}
+
+@Composable
+private fun EqFadersCard(eqState: EqState, onBand: (Int, Int) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("KONTROL BAND", fontFamily = Plex, fontSize = 8.sp, color = Muted, letterSpacing = 1.sp)
+                Text("SKALA ±12 dB", fontFamily = Plex, fontSize = 8.sp, color = Amber, letterSpacing = 1.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                eqState.bands.forEach { band ->
+                    EqFader(band = band, onBand = onBand)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EqFader(band: EqBand, onBand: (Int, Int) -> Unit) {
+    val minMb = band.minMb.toFloat()
+    val maxMb = band.maxMb.toFloat()
+    Column(
+        Modifier.width(46.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            formatDb(band.levelMb),
+            fontFamily = Plex,
+            fontSize = 8.sp,
+            color = Amber,
+            maxLines = 1
+        )
+        Box(
+            Modifier
+                .width(30.dp)
+                .height(140.dp)
+                .pointerInput(band.index, minMb, maxMb) {
+                    fun update(y: Float) {
+                        val height = size.height.toFloat()
+                        if (height <= 0f) return
+                        val ratio = (y / height).coerceIn(0f, 1f)
+                        val level = (maxMb - ratio * (maxMb - minMb)).roundToInt()
+                        onBand(band.index, level.coerceIn(minMb.toInt(), maxMb.toInt()))
+                    }
+                    detectDragGestures(
+                        onDragStart = { update(it.y) },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            update(change.position.y)
+                        }
                     )
                 }
-                val low = band.minMb.toFloat()
-                val high = band.maxMb.toFloat()
-                Slider(
-                    value = band.levelMb.toFloat(),
-                    onValueChange = { onBand(band.index, it.roundToInt()) },
-                    valueRange = if (high > low) low..high else -1f..1f,
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = Amber,
-                        activeTrackColor = Amber,
-                        inactiveTrackColor = Line
-                    )
-                )
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("MODE CAMPUR AUDIO", fontFamily = Plex, fontSize = 10.sp, color = Ink, letterSpacing = 1.sp)
-                Text(
-                    "Musik tetap berbunyi saat aplikasi lain memutar audio. Notifikasi/navigasi bisa tumpang tindih.",
-                    fontFamily = DmSans, fontSize = 11.sp, color = Muted
+            Canvas(Modifier.fillMaxSize()) {
+                val cx = size.width / 2f
+                drawLine(
+                    color = Color(0xFF2A312A),
+                    start = Offset(cx, 4.dp.toPx()),
+                    end = Offset(cx, size.height - 4.dp.toPx()),
+                    strokeWidth = 4.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF4B554A),
+                    start = Offset(cx - 7.dp.toPx(), size.height / 2f),
+                    end = Offset(cx + 7.dp.toPx(), size.height / 2f),
+                    strokeWidth = 1.dp.toPx()
+                )
+                val ratio = if (maxMb > minMb) (maxMb - band.levelMb) / (maxMb - minMb) else 0.5f
+                val thumbY = (ratio * (size.height - 8.dp.toPx())) + 4.dp.toPx()
+                drawLine(
+                    color = Coral,
+                    start = Offset(cx - 10.dp.toPx(), thumbY),
+                    end = Offset(cx + 10.dp.toPx(), thumbY),
+                    strokeWidth = 7.dp.toPx(),
+                    cap = StrokeCap.Round
                 )
             }
-            Switch(checked = mixMode, onCheckedChange = onMixMode)
         }
-        Spacer(Modifier.height(20.dp))
+        Text(formatHz(band.freqHz), fontFamily = Plex, fontSize = 7.sp, color = Muted)
+    }
+}
+
+@Composable
+private fun PreampCard(eqState: EqState, onPreamp: (Int) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("PREAMP", fontFamily = Plex, fontSize = 8.sp, color = Muted, letterSpacing = 1.sp)
+                Text(formatDb(eqState.preampMb), fontFamily = Plex, fontSize = 10.sp, color = Amber)
+            }
+            Spacer(Modifier.height(4.dp))
+            Slider(
+                value = eqState.preampMb.toFloat(),
+                onValueChange = { onPreamp(it.roundToInt()) },
+                valueRange = eqState.preampMinMb.toFloat()..eqState.preampMaxMb.toFloat(),
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = Amber,
+                    activeTrackColor = Amber,
+                    inactiveTrackColor = Line
+                )
+            )
+            Text(
+                "Turunkan preamp kalau boost bikin suara pecah.",
+                fontFamily = DmSans,
+                fontSize = 11.sp,
+                color = Muted
+            )
+        }
     }
 }
 
@@ -1332,6 +1651,12 @@ private fun formatDuration(ms: Long): String {
 
 private fun formatHz(hz: Int): String =
     if (hz >= 1000) "%.1f kHz".format(hz / 1000f) else "$hz Hz"
+
+private fun formatDb(mb: Int): String {
+    val db = mb / 100f
+    val prefix = if (db > 0f) "+" else ""
+    return "$prefix%.1f dB".format(db)
+}
 
 private fun initials(title: String): String =
     title.split(' ', '-', '_')
