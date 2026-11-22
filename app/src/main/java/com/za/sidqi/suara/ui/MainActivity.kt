@@ -42,6 +42,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +65,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -94,6 +98,62 @@ private val Coral = Color(0xFFFF7654)
 private val Amber = Color(0xFFF3C45C)
 private val Mint = Color(0xFF7CE0B4)
 private val Line = Color(0xFF333B33)
+
+private fun suaraIcon(name: String, pathData: String): ImageVector =
+    ImageVector.Builder(
+        name = name,
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = PathParser().parsePathString(pathData).toNodes(),
+        fill = SolidColor(Color.White)
+    ).build()
+
+private object SuaraIcons {
+    val Play = suaraIcon("Play", "M8,5v14l11,-7z")
+    val Pause = suaraIcon("Pause", "M6,19h4V5H6v14zM14,5v14h4V5h-4z")
+    val Previous = suaraIcon("Previous", "M6,6h2v12H6zM9.5,12l8.5,6V6z")
+    val Next = suaraIcon("Next", "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z")
+    val Shuffle = suaraIcon(
+        "Shuffle",
+        "M10.59,9.17L5.41,4 4,5.41l5.17,5.17 1.42,-1.41zM14.5,4l2.04,2.04L4,18.59 5.41,20 17.96,7.46 20,9.5V4h-5.5zM14.83,13.41l-1.41,1.41 3.13,3.13L14.5,20H20v-5.5l-2.04,2.04 -3.13,-3.13z"
+    )
+    val Repeat = suaraIcon(
+        "Repeat",
+        "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v5z"
+    )
+    val RepeatOne = suaraIcon(
+        "RepeatOne",
+        "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v5zM13,15V9h-2v1h-1v2h1v3h2z"
+    )
+    val Favorite = suaraIcon(
+        "Favorite",
+        "M12,21.35l-1.45,-1.32C5.4,15.36 2,12.28 2,8.5 2,5.42 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.09C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.42 22,8.5c0,3.78 -3.4,6.86 -8.55,11.54L12,21.35z"
+    )
+    val FavoriteBorder = suaraIcon(
+        "FavoriteBorder",
+        "M16.5,3c-1.74,0 -3.41,0.81 -4.5,2.09C10.91,3.81 9.24,3 7.5,3 4.42,3 2,5.42 2,8.5c0,3.78 3.4,6.86 8.55,11.54L12,21.35l1.45,-1.32C18.6,15.36 22,12.28 22,8.5 22,5.42 19.58,3 16.5,3zM12.1,18.55l-0.1,0.1 -0.1,-0.1C7.14,14.24 4,11.39 4,8.5 4,6.5 5.5,5 7.5,5c1.54,0 3.04,0.99 3.57,2.36h1.87C13.46,5.99 14.96,5 16.5,5c2,0 3.5,1.5 3.5,3.5 0,2.89 -3.14,5.74 -7.9,10.05z"
+    )
+    val Queue = suaraIcon(
+        "Queue",
+        "M15,6H3v2h12V6zM15,10H3v2h12v-2zM3,16h8v-2H3v2zM17,6v8.18c-0.31,-0.11 -0.65,-0.18 -1,-0.18 -1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3V8h3V6h-5z"
+    )
+    val More = suaraIcon(
+        "More",
+        "M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z"
+    )
+    val Add = suaraIcon("Add", "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")
+    val Delete = suaraIcon(
+        "Delete",
+        "M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z"
+    )
+    val Close = suaraIcon(
+        "Close",
+        "M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"
+    )
+}
 
 private val Fraunces = FontFamily(Font(R.font.fraunces))
 private val Plex = FontFamily(
@@ -552,7 +612,7 @@ private fun TrackRow(
         )
         Box {
             IconButton(onClick = { menu = true }) {
-                Text("···", color = Muted, fontSize = 16.sp)
+                Icon(SuaraIcons.More, contentDescription = "Menu lagu", tint = Muted, modifier = Modifier.size(20.dp))
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Putar") }, onClick = { menu = false; onPlay() })
@@ -617,10 +677,20 @@ private fun MiniPlayer(
             Text(track.artist ?: "Suara", fontFamily = Plex, fontSize = 9.sp, color = Muted, maxLines = 1)
         }
         IconButton(onClick = onToggle) {
-            Text(if (isPlaying) "JEDA" else "PUTAR", color = Ink, fontFamily = Plex, fontSize = 9.sp)
+            Icon(
+                if (isPlaying) SuaraIcons.Pause else SuaraIcons.Play,
+                contentDescription = if (isPlaying) "Jeda" else "Putar",
+                tint = Ink,
+                modifier = Modifier.size(22.dp)
+            )
         }
         IconButton(onClick = onNext) {
-            Text("LANJUT", color = Ink, fontFamily = Plex, fontSize = 9.sp)
+            Icon(
+                SuaraIcons.Next,
+                contentDescription = "Lagu berikutnya",
+                tint = Ink,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -674,34 +744,56 @@ private fun NowPlaying(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onShuffle) {
-                Text("ACAK", fontFamily = Plex, fontSize = 10.sp, color = if (shuffle) Coral else Muted)
+            IconButton(onClick = onShuffle) {
+                Icon(
+                    SuaraIcons.Shuffle,
+                    contentDescription = "Acak",
+                    tint = if (shuffle) Coral else Muted,
+                    modifier = Modifier.size(21.dp)
+                )
             }
-            TextButton(onClick = onPrev) { Text("SEBELUM", fontFamily = Plex, fontSize = 10.sp, color = Ink) }
+            IconButton(onClick = onPrev) {
+                Icon(SuaraIcons.Previous, contentDescription = "Sebelumnya", tint = Ink, modifier = Modifier.size(26.dp))
+            }
             Button(
                 onClick = onToggle,
                 modifier = Modifier.size(64.dp),
                 shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF14180F))
-            ) { Text(if (isPlaying) "JEDA" else "PUTAR", fontFamily = Plex, fontSize = 11.sp) }
-            TextButton(onClick = onNext) { Text("LANJUT", fontFamily = Plex, fontSize = 10.sp, color = Ink) }
-            TextButton(onClick = onRepeat) {
-                Text(
-                    when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> "ULANG 1"
-                        else -> "ULANG"
-                    },
-                    fontFamily = Plex,
-                    fontSize = 10.sp,
-                    color = if (repeatMode != Player.REPEAT_MODE_OFF) Coral else Muted
+            ) {
+                Icon(
+                    if (isPlaying) SuaraIcons.Pause else SuaraIcons.Play,
+                    contentDescription = if (isPlaying) "Jeda" else "Putar",
+                    tint = Color(0xFF14180F),
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+            IconButton(onClick = onNext) {
+                Icon(SuaraIcons.Next, contentDescription = "Berikutnya", tint = Ink, modifier = Modifier.size(26.dp))
+            }
+            IconButton(onClick = onRepeat) {
+                Icon(
+                    if (repeatMode == Player.REPEAT_MODE_ONE) SuaraIcons.RepeatOne else SuaraIcons.Repeat,
+                    contentDescription = "Ulangi",
+                    tint = if (repeatMode != Player.REPEAT_MODE_OFF) Coral else Muted,
+                    modifier = Modifier.size(21.dp)
                 )
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             TextButton(onClick = onFavorite) {
+                Icon(
+                    if (isFavorite) SuaraIcons.Favorite else SuaraIcons.FavoriteBorder,
+                    contentDescription = "Favorit",
+                    tint = if (isFavorite) Coral else Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
                 Text(if (isFavorite) "TERFAVORIT" else "FAVORIT", fontFamily = Plex, fontSize = 10.sp, color = if (isFavorite) Coral else Muted)
             }
             TextButton(onClick = onQueue) {
+                Icon(SuaraIcons.Queue, contentDescription = "Antrean", tint = Muted, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
                 Text("ANTREAN", fontFamily = Plex, fontSize = 10.sp, color = Muted)
             }
         }
@@ -740,7 +832,7 @@ private fun QueueSheet(
                             Text(track.artist ?: "", fontFamily = Plex, fontSize = 9.sp, color = Muted)
                         }
                         IconButton(onClick = { onRemove(index) }) {
-                            Text("×", color = Muted, fontSize = 18.sp)
+                            Icon(SuaraIcons.Close, contentDescription = "Hapus dari antrean", tint = Muted, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
