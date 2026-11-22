@@ -9,10 +9,14 @@ import androidx.lifecycle.viewModelScope
 import com.za.sidqi.suara.data.FavoriteEntity
 import com.za.sidqi.suara.data.MediaStoreScanner
 import com.za.sidqi.suara.data.PlaybackStateEntity
+import com.za.sidqi.suara.data.PlaylistEntity
+import com.za.sidqi.suara.data.PlaylistSummary
+import com.za.sidqi.suara.data.PlaylistTrackEntity
 import com.za.sidqi.suara.data.QueueEntity
 import com.za.sidqi.suara.data.SuaraDatabase
 import com.za.sidqi.suara.data.TrackEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +47,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
     )
     val queue: StateFlow<List<TrackEntity>> = dao.observeQueue().stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
+    )
+    val favoriteTracks: StateFlow<List<TrackEntity>> = dao.observeFavorites().stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
+    )
+    val playlists: StateFlow<List<PlaylistSummary>> = dao.observePlaylists().stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
     )
 
@@ -96,6 +106,52 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    fun createPlaylist(name: String, track: TrackEntity? = null) {
+        val clean = name.trim()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            val id = dao.insertPlaylist(
+                PlaylistEntity(name = clean, createdAt = System.currentTimeMillis())
+            )
+            if (track != null) {
+                dao.addPlaylistTrack(
+                    PlaylistTrackEntity(
+                        playlistId = id,
+                        trackId = track.id,
+                        position = 0,
+                        addedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+    }
+
+    fun deletePlaylist(id: Long) {
+        viewModelScope.launch {
+            dao.deletePlaylistTracks(id)
+            dao.deletePlaylist(id)
+        }
+    }
+
+    fun addToPlaylist(playlistId: Long, track: TrackEntity) {
+        viewModelScope.launch {
+            dao.addPlaylistTrack(
+                PlaylistTrackEntity(
+                    playlistId = playlistId,
+                    trackId = track.id,
+                    position = dao.nextPlaylistPosition(playlistId),
+                    addedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    fun removeFromPlaylist(playlistId: Long, track: TrackEntity) {
+        viewModelScope.launch { dao.removePlaylistTrack(playlistId, track.id) }
+    }
+
+    fun playlistTracks(id: Long): Flow<List<TrackEntity>> = dao.observePlaylistTracks(id)
 
     fun saveQueue(items: List<TrackEntity>) {
         viewModelScope.launch {

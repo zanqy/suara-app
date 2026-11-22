@@ -56,6 +56,28 @@ data class PlaybackStateEntity(
     val repeatMode: Int = 0
 )
 
+@Entity(tableName = "playlists")
+data class PlaylistEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAt: Long
+)
+
+@Entity(tableName = "playlist_tracks", primaryKeys = ["playlistId", "trackId"])
+data class PlaylistTrackEntity(
+    val playlistId: Long,
+    val trackId: Long,
+    val position: Int,
+    val addedAt: Long
+)
+
+data class PlaylistSummary(
+    val id: Long,
+    val name: String,
+    val createdAt: Long,
+    val trackCount: Int
+)
+
 @Dao
 interface SuaraDao {
     @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE ASC")
@@ -103,6 +125,45 @@ interface SuaraDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQueue(items: List<QueueEntity>)
 
+    @Query("""
+        SELECT p.id AS id, p.name AS name, p.createdAt AS createdAt,
+               COUNT(pt.trackId) AS trackCount
+        FROM playlists p
+        LEFT JOIN playlist_tracks pt ON p.id = pt.playlistId
+        GROUP BY p.id
+        ORDER BY p.createdAt DESC
+    """)
+    fun observePlaylists(): Flow<List<PlaylistSummary>>
+
+    @Insert
+    suspend fun insertPlaylist(playlist: PlaylistEntity): Long
+
+    @Query("DELETE FROM playlists WHERE id = :id")
+    suspend fun deletePlaylist(id: Long)
+
+    @Query("DELETE FROM playlist_tracks WHERE playlistId = :id")
+    suspend fun deletePlaylistTracks(id: Long)
+
+    @Query("""
+        SELECT t.* FROM tracks t
+        INNER JOIN playlist_tracks pt ON t.id = pt.trackId
+        WHERE pt.playlistId = :id
+        ORDER BY pt.position ASC
+    """)
+    fun observePlaylistTracks(id: Long): Flow<List<TrackEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addPlaylistTrack(item: PlaylistTrackEntity)
+
+    @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun removePlaylistTrack(playlistId: Long, trackId: Long)
+
+    @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlistId = :id")
+    suspend fun playlistTrackCount(id: Long): Int
+
+    @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_tracks WHERE playlistId = :id")
+    suspend fun nextPlaylistPosition(id: Long): Int
+
     @Query("SELECT * FROM playback_state WHERE id = 1")
     suspend fun playbackState(): PlaybackStateEntity?
 
@@ -111,8 +172,11 @@ interface SuaraDao {
 }
 
 @Database(
-    entities = [TrackEntity::class, FavoriteEntity::class, QueueEntity::class, PlaybackStateEntity::class],
-    version = 1,
+    entities = [
+        TrackEntity::class, FavoriteEntity::class, QueueEntity::class,
+        PlaybackStateEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class
+    ],
+    version = 2,
     exportSchema = false
 )
 abstract class SuaraDatabase : RoomDatabase() {
@@ -122,8 +186,25 @@ abstract class SuaraDatabase : RoomDatabase() {
         @Volatile
         private var instance: SuaraDatabase? = null
 
+        private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS playlists (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "name TEXT NOT NULL, createdAt INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS playlist_tracks (" +
+                        "playlistId INTEGER NOT NULL, trackId INTEGER NOT NULL, " +
+                        "position INTEGER NOT NULL, addedAt INTEGER NOT NULL, " +
+                        "PRIMARY KEY(playlistId, trackId))"
+                )
+            }
+        }
+
         fun get(context: Context): SuaraDatabase = instance ?: synchronized(this) {
             Room.databaseBuilder(context.applicationContext, SuaraDatabase::class.java, "suara.db")
+                .addMigrations(MIGRATION_1_2)
                 .build()
                 .also { instance = it }
         }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +32,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -77,9 +79,12 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import com.za.sidqi.suara.R
+import com.za.sidqi.suara.data.PlaylistSummary
 import com.za.sidqi.suara.data.TrackEntity
 import com.za.sidqi.suara.playback.PlayerHolder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 private val Bg = Color(0xFF0B0D0B)
 private val Surface = Color(0xFF171B17)
@@ -126,10 +131,13 @@ private fun SuaraRoot() {
     val allTracks by vm.tracks.collectAsState()
     val favoriteIds by vm.favoriteIds.collectAsState()
     val queue by vm.queue.collectAsState()
+    val playlists by vm.playlists.collectAsState()
 
     var hasPermission by remember { mutableStateOf(hasAudioPermission(context)) }
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showQueue by rememberSaveable { mutableStateOf(false) }
+    var showPlaylists by rememberSaveable { mutableStateOf(false) }
+    var playlistTarget by remember { mutableStateOf<TrackEntity?>(null) }
     var controller by remember { mutableStateOf<MediaController?>(null) }
     var currentTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -239,8 +247,19 @@ private fun SuaraRoot() {
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            Text("Suara.", fontFamily = Fraunces, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink)
-            Text("MUSIK LOKAL", fontFamily = Plex, fontSize = 10.sp, color = Muted, letterSpacing = 2.sp)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Suara.", fontFamily = Fraunces, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("MUSIK LOKAL", fontFamily = Plex, fontSize = 10.sp, color = Muted, letterSpacing = 2.sp)
+                }
+                TextButton(onClick = { showPlaylists = true }) {
+                    Text("PLAYLIST", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+                }
+            }
             Spacer(Modifier.height(18.dp))
 
             SearchField(value = vm.query.collectAsState().value, onValueChange = { vm.query.value = it })
@@ -312,6 +331,7 @@ private fun SuaraRoot() {
                             onClick = { playTrack(track, tracks) },
                             onPlay = { playTrack(track, tracks) },
                             onQueue = { addToQueue(track) },
+                            onAddToPlaylist = { playlistTarget = track },
                             onFavorite = { vm.toggleFavorite(track) },
                             onDelete = { vm.removeMissing(track) }
                         )
@@ -369,6 +389,33 @@ private fun SuaraRoot() {
                 }
             )
         }
+    }
+
+    if (showPlaylists) {
+        ModalBottomSheet(
+            onDismissRequest = { showPlaylists = false },
+            containerColor = Surface
+        ) {
+            PlaylistSheet(
+                playlists = playlists,
+                tracksFor = { id -> vm.playlistTracks(id) },
+                onPlayAll = { list -> list.firstOrNull()?.let { playTrack(it, list) } },
+                onPlayTrack = { track, list -> playTrack(track, list) },
+                onRemoveTrack = { id, track -> vm.removeFromPlaylist(id, track) },
+                onCreate = { name -> vm.createPlaylist(name) },
+                onDelete = { id -> vm.deletePlaylist(id) }
+            )
+        }
+    }
+
+    playlistTarget?.let { track ->
+        AddToPlaylistDialog(
+            track = track,
+            playlists = playlists,
+            onDismiss = { playlistTarget = null },
+            onAdd = { id -> vm.addToPlaylist(id, track); playlistTarget = null },
+            onCreate = { name -> vm.createPlaylist(name, track); playlistTarget = null }
+        )
     }
 
     LaunchedEffect(controller, currentTrack, isPlaying) {
@@ -462,6 +509,7 @@ private fun TrackRow(
     onClick: () -> Unit,
     onPlay: () -> Unit,
     onQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
     onFavorite: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -504,11 +552,12 @@ private fun TrackRow(
         )
         Box {
             IconButton(onClick = { menu = true }) {
-                Text("⋮", color = Muted, fontSize = 18.sp)
+                Text("···", color = Muted, fontSize = 16.sp)
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Putar") }, onClick = { menu = false; onPlay() })
                 DropdownMenuItem(text = { Text("Tambahkan ke antrean") }, onClick = { menu = false; onQueue() })
+                DropdownMenuItem(text = { Text("Tambahkan ke playlist") }, onClick = { menu = false; onAddToPlaylist() })
                 DropdownMenuItem(
                     text = { Text(if (isFavorite) "Hapus favorit" else "Favorit") },
                     onClick = { menu = false; onFavorite() }
@@ -568,10 +617,10 @@ private fun MiniPlayer(
             Text(track.artist ?: "Suara", fontFamily = Plex, fontSize = 9.sp, color = Muted, maxLines = 1)
         }
         IconButton(onClick = onToggle) {
-            Text(if (isPlaying) "⏸" else "▶", color = Ink, fontSize = 18.sp)
+            Text(if (isPlaying) "JEDA" else "PUTAR", color = Ink, fontFamily = Plex, fontSize = 9.sp)
         }
         IconButton(onClick = onNext) {
-            Text("⏭", color = Ink, fontSize = 16.sp)
+            Text("LANJUT", color = Ink, fontFamily = Plex, fontSize = 9.sp)
         }
     }
 }
@@ -626,34 +675,34 @@ private fun NowPlaying(
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onShuffle) {
-                Text("🔀", fontSize = 18.sp, color = if (shuffle) Coral else Muted)
+                Text("ACAK", fontFamily = Plex, fontSize = 10.sp, color = if (shuffle) Coral else Muted)
             }
-            TextButton(onClick = onPrev) { Text("⏮", fontSize = 22.sp, color = Ink) }
+            TextButton(onClick = onPrev) { Text("SEBELUM", fontFamily = Plex, fontSize = 10.sp, color = Ink) }
             Button(
                 onClick = onToggle,
                 modifier = Modifier.size(64.dp),
                 shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF14180F))
-            ) { Text(if (isPlaying) "⏸" else "▶", fontSize = 22.sp) }
-            TextButton(onClick = onNext) { Text("⏭", fontSize = 22.sp, color = Ink) }
+            ) { Text(if (isPlaying) "JEDA" else "PUTAR", fontFamily = Plex, fontSize = 11.sp) }
+            TextButton(onClick = onNext) { Text("LANJUT", fontFamily = Plex, fontSize = 10.sp, color = Ink) }
             TextButton(onClick = onRepeat) {
                 Text(
                     when (repeatMode) {
-                        Player.REPEAT_MODE_ONE -> "🔂"
-                        Player.REPEAT_MODE_ALL -> "🔁"
-                        else -> "🔁"
+                        Player.REPEAT_MODE_ONE -> "ULANG 1"
+                        else -> "ULANG"
                     },
-                    fontSize = 18.sp,
+                    fontFamily = Plex,
+                    fontSize = 10.sp,
                     color = if (repeatMode != Player.REPEAT_MODE_OFF) Coral else Muted
                 )
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             TextButton(onClick = onFavorite) {
-                Text(if (isFavorite) "♥ Favorit" else "♡ Favorit", fontFamily = Plex, fontSize = 11.sp, color = if (isFavorite) Coral else Muted)
+                Text(if (isFavorite) "TERFAVORIT" else "FAVORIT", fontFamily = Plex, fontSize = 10.sp, color = if (isFavorite) Coral else Muted)
             }
             TextButton(onClick = onQueue) {
-                Text("☰ Antrean", fontFamily = Plex, fontSize = 11.sp, color = Muted)
+                Text("ANTREAN", fontFamily = Plex, fontSize = 10.sp, color = Muted)
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -700,6 +749,203 @@ private fun QueueSheet(
     }
 }
 
+@Composable
+private fun PlaylistSheet(
+    playlists: List<PlaylistSummary>,
+    tracksFor: (Long) -> Flow<List<TrackEntity>>,
+    onPlayAll: (List<TrackEntity>) -> Unit,
+    onPlayTrack: (TrackEntity, List<TrackEntity>) -> Unit,
+    onRemoveTrack: (Long, TrackEntity) -> Unit,
+    onCreate: (String) -> Unit,
+    onDelete: (Long) -> Unit
+) {
+    var selected by remember { mutableStateOf<PlaylistSummary?>(null) }
+    var showCreate by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxWidth().padding(20.dp)) {
+        val current = selected
+        if (current == null) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Playlist", fontFamily = Fraunces, fontSize = 20.sp, color = Ink)
+                TextButton(onClick = { showCreate = true }) {
+                    Text("BUAT", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+                }
+            }
+            if (playlists.isEmpty()) {
+                Text(
+                    "Belum ada playlist. Buat satu dari menu lagu atau tombol BUAT.",
+                    fontFamily = DmSans, fontSize = 12.sp, color = Muted,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            } else {
+                LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                    items(playlists, key = { it.id }) { playlist ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { selected = playlist }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(playlist.name, fontFamily = DmSans, fontSize = 14.sp, color = Ink)
+                                Text("${playlist.trackCount} lagu", fontFamily = Plex, fontSize = 10.sp, color = Muted)
+                            }
+                            Text("BUKA", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+                        }
+                    }
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { selected = null }) {
+                    Text("KEMBALI", fontFamily = Plex, fontSize = 10.sp, color = Muted)
+                }
+                TextButton(onClick = { confirmDelete = true }) {
+                    Text("HAPUS", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+                }
+            }
+            Text(current.name, fontFamily = Fraunces, fontSize = 22.sp, color = Ink)
+            Spacer(Modifier.height(10.dp))
+            val detail by tracksFor(current.id).collectAsState(initial = emptyList())
+            Button(
+                onClick = { onPlayAll(detail) },
+                enabled = detail.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF14180F))
+            ) { Text("PUTAR SEMUA", fontFamily = Plex, fontSize = 11.sp) }
+            Spacer(Modifier.height(10.dp))
+            if (detail.isEmpty()) {
+                Text("Playlist masih kosong.", fontFamily = DmSans, fontSize = 12.sp, color = Muted)
+            } else {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    itemsIndexed(detail) { _, track ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { onPlayTrack(track, detail) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    track.title,
+                                    fontFamily = DmSans, fontSize = 13.sp, color = Ink,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Text(track.artist ?: "", fontFamily = Plex, fontSize = 9.sp, color = Muted)
+                            }
+                            TextButton(onClick = { onRemoveTrack(current.id, track) }) {
+                                Text("HAPUS", fontFamily = Plex, fontSize = 9.sp, color = Muted)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCreate) {
+        CreatePlaylistDialog(
+            onDismiss = { showCreate = false },
+            onConfirm = { name -> onCreate(name); showCreate = false }
+        )
+    }
+    if (confirmDelete && selected != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Hapus playlist?") },
+            text = { Text("Lagu tidak dihapus, hanya playlist \"${selected!!.name}\" yang dibuang.") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(selected!!.id); confirmDelete = false; selected = null }) {
+                    Text("HAPUS", color = Coral)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("BATAL") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun CreatePlaylistDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Playlist baru", fontFamily = Fraunces) },
+        text = {
+            BasicTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                textStyle = TextStyle(color = Ink, fontSize = 14.sp, fontFamily = DmSans),
+                decorationBox = { inner ->
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .border(1.dp, Line, RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        if (name.isBlank()) Text("Nama playlist", color = Muted, fontSize = 13.sp)
+                        inner()
+                    }
+                }
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = { onConfirm(name.trim()) }
+            ) { Text("BUAT") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("BATAL") } }
+    )
+}
+
+@Composable
+private fun AddToPlaylistDialog(
+    track: TrackEntity,
+    playlists: List<PlaylistSummary>,
+    onDismiss: () -> Unit,
+    onAdd: (Long) -> Unit,
+    onCreate: (String) -> Unit
+) {
+    var create by remember { mutableStateOf(false) }
+    if (create) {
+        CreatePlaylistDialog(
+            onDismiss = onDismiss,
+            onConfirm = { name -> onCreate(name); onDismiss() }
+        )
+        return
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tambahkan ke playlist", fontFamily = Fraunces) },
+        text = {
+            Column {
+                if (playlists.isEmpty()) {
+                    Text("Belum ada playlist. Buat baru dulu.", fontFamily = DmSans, fontSize = 12.sp, color = Muted)
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                        items(playlists, key = { it.id }) { playlist ->
+                            TextButton(
+                                onClick = { onAdd(playlist.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(playlist.name, fontFamily = DmSans, fontSize = 13.sp, color = Ink)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { create = true }) { Text("BUAT BARU") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("BATAL") } }
+    )
+}
+
 private fun toMediaItem(track: TrackEntity): MediaItem =
     MediaItem.Builder()
         .setUri(track.uri)
@@ -740,4 +986,4 @@ private fun initials(title: String): String =
         .take(2)
         .map { it.first().uppercaseChar() }
         .joinToString("")
-        .ifBlank { "♪" }
+        .ifBlank { "S" }
