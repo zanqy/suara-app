@@ -13,6 +13,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -84,11 +88,15 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import com.za.sidqi.suara.R
 import com.za.sidqi.suara.data.PlaylistSummary
+import com.za.sidqi.suara.playback.AudioSettings
+import com.za.sidqi.suara.playback.AudioState
+import com.za.sidqi.suara.playback.EqState
 import com.za.sidqi.suara.data.TrackEntity
 import com.za.sidqi.suara.playback.PlayerHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlin.math.roundToInt
 
 private val Bg = Color(0xFF0B0D0B)
 private val Surface = Color(0xFF171B17)
@@ -153,6 +161,18 @@ private object SuaraIcons {
         "Close",
         "M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"
     )
+    val VolumeUp = suaraIcon(
+        "VolumeUp",
+        "M3,9v6h4l5,5V4L7,9H3zM16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z"
+    )
+    val VolumeOff = suaraIcon(
+        "VolumeOff",
+        "M16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v2.21l2.45,2.45c0.03,-0.2 0.05,-0.41 0.05,-0.63zM19,12c0,0.94 -0.2,1.82 -0.54,2.64l1.51,1.51C20.63,14.91 21,13.5 21,12c0,-4.28 -2.99,-7.86 -7,-8.77v2.06c2.89,0.86 5,3.54 5,6.71zM4.27,3L3,4.27 7.73,9H3v6h4l5,5v-6.73l4.25,4.25c-0.67,0.52 -1.42,0.93 -2.25,1.18v2.06c1.38,-0.31 2.63,-0.95 3.69,-1.81L19.73,21 21,19.73l-9,-9L4.27,3zM12,4L9.91,6.09 12,8.18V4z"
+    )
+    val Tune = suaraIcon(
+        "Tune",
+        "M3,17v2h6v-2H3zM3,5v2h10V5H3zM13,21v-2h8v-2h-8v-2h-2v6h2zM7,9v2H3v2h4v2h2V9H7zM21,13v-2H11v2h10zM15,9h2V7h4V5h-4V3h-2v6z"
+    )
 }
 
 private val Fraunces = FontFamily(Font(R.font.fraunces))
@@ -197,7 +217,11 @@ private fun SuaraRoot() {
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showPlaylists by rememberSaveable { mutableStateOf(false) }
+    var showAudio by rememberSaveable { mutableStateOf(false) }
     var playlistTarget by remember { mutableStateOf<TrackEntity?>(null) }
+    var appVolume by remember { mutableStateOf(AudioSettings.appVolume(context)) }
+    var mixMode by remember { mutableStateOf(AudioSettings.mixMode(context)) }
+    val eqState by AudioState.eq.collectAsState()
     var controller by remember { mutableStateOf<MediaController?>(null) }
     var currentTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -217,7 +241,10 @@ private fun SuaraRoot() {
     }
 
     DisposableEffect(Unit) {
-        PlayerHolder.connect(context) { controller = it }
+        PlayerHolder.connect(context) { connected ->
+            controller = connected
+            connected.volume = AudioSettings.appVolume(context)
+        }
         onDispose { }
     }
 
@@ -235,6 +262,10 @@ private fun SuaraRoot() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 durationMs = player.duration.coerceAtLeast(0)
+            }
+
+            override fun onVolumeChanged(volume: Float) {
+                appVolume = volume.coerceIn(0f, 1f)
             }
         }
         player.addListener(listener)
@@ -316,8 +347,18 @@ private fun SuaraRoot() {
                     Text("Suara.", fontFamily = Fraunces, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink)
                     Text("MUSIK LOKAL", fontFamily = Plex, fontSize = 10.sp, color = Muted, letterSpacing = 2.sp)
                 }
-                TextButton(onClick = { showPlaylists = true }) {
-                    Text("PLAYLIST", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = {
+                        showAudio = true
+                        AudioSettings.send(context, AudioSettings.ACTION_EQ_REFRESH)
+                    }) {
+                        Icon(SuaraIcons.Tune, contentDescription = "Audio", tint = Muted, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("AUDIO", fontFamily = Plex, fontSize = 10.sp, color = Muted)
+                    }
+                    TextButton(onClick = { showPlaylists = true }) {
+                        Text("PLAYLIST", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+                    }
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -429,7 +470,56 @@ private fun SuaraRoot() {
                     }
                 },
                 onFavorite = { vm.toggleFavorite(currentTrack!!) },
-                onQueue = { showQueue = true }
+                onQueue = { showQueue = true },
+                appVolume = appVolume,
+                onVolume = { value ->
+                    appVolume = value
+                    controller?.volume = value
+                    AudioSettings.setAppVolume(context, value)
+                }
+            )
+        }
+    }
+
+    if (showAudio) {
+        ModalBottomSheet(
+            onDismissRequest = { showAudio = false },
+            containerColor = Surface
+        ) {
+            AudioSheet(
+                appVolume = appVolume,
+                onVolume = { value ->
+                    appVolume = value
+                    controller?.volume = value
+                    AudioSettings.setAppVolume(context, value)
+                },
+                eqState = eqState,
+                onEqEnabled = { enabled ->
+                    AudioSettings.setEqEnabled(context, enabled)
+                    AudioSettings.send(context, AudioSettings.ACTION_EQ_ENABLED) {
+                        putExtra(AudioSettings.EXTRA_ENABLED, enabled)
+                    }
+                },
+                onPreset = { preset ->
+                    AudioSettings.setEqPreset(context, preset)
+                    AudioSettings.send(context, AudioSettings.ACTION_EQ_PRESET) {
+                        putExtra(AudioSettings.EXTRA_PRESET, preset)
+                    }
+                },
+                onBand = { band, level ->
+                    AudioSettings.send(context, AudioSettings.ACTION_EQ_BAND) {
+                        putExtra(AudioSettings.EXTRA_BAND, band)
+                        putExtra(AudioSettings.EXTRA_LEVEL, level)
+                    }
+                },
+                mixMode = mixMode,
+                onMixMode = { enabled ->
+                    mixMode = enabled
+                    AudioSettings.setMixMode(context, enabled)
+                    AudioSettings.send(context, AudioSettings.ACTION_MIX_MODE) {
+                        putExtra(AudioSettings.EXTRA_ENABLED, enabled)
+                    }
+                }
             )
         }
     }
@@ -711,7 +801,9 @@ private fun NowPlaying(
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onFavorite: () -> Unit,
-    onQueue: () -> Unit
+    onQueue: () -> Unit,
+    appVolume: Float,
+    onVolume: (Float) -> Unit
 ) {
     Column(
         Modifier
@@ -737,6 +829,35 @@ private fun NowPlaying(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatDuration(positionMs), fontFamily = Plex, fontSize = 10.sp, color = Muted)
             Text(formatDuration(durationMs), fontFamily = Plex, fontSize = 10.sp, color = Muted)
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (appVolume <= 0.01f) SuaraIcons.VolumeOff else SuaraIcons.VolumeUp,
+                contentDescription = "Volume aplikasi",
+                tint = Muted,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Slider(
+                value = appVolume,
+                onValueChange = onVolume,
+                valueRange = 0f..1f,
+                modifier = Modifier.weight(1f),
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = Coral,
+                    activeTrackColor = Coral,
+                    inactiveTrackColor = Line
+                )
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "${(appVolume * 100).roundToInt()}%",
+                fontFamily = Plex,
+                fontSize = 10.sp,
+                color = Muted,
+                modifier = Modifier.width(36.dp)
+            )
         }
         Spacer(Modifier.height(8.dp))
         Row(
@@ -796,6 +917,143 @@ private fun NowPlaying(
                 Spacer(Modifier.width(6.dp))
                 Text("ANTREAN", fontFamily = Plex, fontSize = 10.sp, color = Muted)
             }
+        }
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun AudioSheet(
+    appVolume: Float,
+    onVolume: (Float) -> Unit,
+    eqState: EqState,
+    onEqEnabled: (Boolean) -> Unit,
+    onPreset: (String) -> Unit,
+    onBand: (Int, Int) -> Unit,
+    mixMode: Boolean,
+    onMixMode: (Boolean) -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(max = 640.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
+    ) {
+        Text("Audio", fontFamily = Fraunces, fontSize = 22.sp, color = Ink)
+        Text("VOLUME APLIKASI", fontFamily = Plex, fontSize = 10.sp, color = Muted, letterSpacing = 1.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (appVolume <= 0.01f) SuaraIcons.VolumeOff else SuaraIcons.VolumeUp,
+                contentDescription = "Volume aplikasi",
+                tint = Muted,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Slider(
+                value = appVolume,
+                onValueChange = onVolume,
+                valueRange = 0f..1f,
+                modifier = Modifier.weight(1f),
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = Coral,
+                    activeTrackColor = Coral,
+                    inactiveTrackColor = Line
+                )
+            )
+            Text(
+                "${(appVolume * 100).roundToInt()}%",
+                fontFamily = Plex,
+                fontSize = 11.sp,
+                color = Muted,
+                modifier = Modifier.width(40.dp)
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("EQUALIZER", fontFamily = Plex, fontSize = 10.sp, color = Ink, letterSpacing = 1.sp)
+                Text(
+                    "Atur nada musik. Band mengikuti perangkat.",
+                    fontFamily = DmSans, fontSize = 11.sp, color = Muted
+                )
+            }
+            Switch(
+                checked = eqState.enabled,
+                onCheckedChange = onEqEnabled,
+                enabled = eqState.available
+            )
+        }
+        if (!eqState.available) {
+            Text(
+                "Equalizer siap setelah musik mulai diputar. Kalau tetap kosong, perangkat ini tidak mendukung equalizer.",
+                fontFamily = DmSans, fontSize = 11.sp, color = Muted,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        } else {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AudioSettings.presets.forEach { preset ->
+                    FilterChip(
+                        selected = eqState.preset == preset,
+                        onClick = { onPreset(preset) },
+                        label = { Text(preset, fontFamily = Plex, fontSize = 9.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Coral,
+                            selectedLabelColor = Color(0xFF14180F),
+                            labelColor = Muted,
+                            containerColor = Color(0xFF101410)
+                        )
+                    )
+                }
+            }
+            eqState.bands.forEach { band ->
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(formatHz(band.freqHz), fontFamily = Plex, fontSize = 9.sp, color = Muted)
+                    Text(
+                        "%.1f dB".format(band.levelMb / 100f),
+                        fontFamily = Plex, fontSize = 9.sp, color = Muted
+                    )
+                }
+                val low = band.minMb.toFloat()
+                val high = band.maxMb.toFloat()
+                Slider(
+                    value = band.levelMb.toFloat(),
+                    onValueChange = { onBand(band.index, it.roundToInt()) },
+                    valueRange = if (high > low) low..high else -1f..1f,
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = Amber,
+                        activeTrackColor = Amber,
+                        inactiveTrackColor = Line
+                    )
+                )
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("MODE CAMPUR AUDIO", fontFamily = Plex, fontSize = 10.sp, color = Ink, letterSpacing = 1.sp)
+                Text(
+                    "Musik tetap berbunyi saat aplikasi lain memutar audio. Notifikasi/navigasi bisa tumpang tindih.",
+                    fontFamily = DmSans, fontSize = 11.sp, color = Muted
+                )
+            }
+            Switch(checked = mixMode, onCheckedChange = onMixMode)
         }
         Spacer(Modifier.height(20.dp))
     }
@@ -1071,6 +1329,9 @@ private fun formatDuration(ms: Long): String {
     val seconds = total % 60
     return "%d:%02d".format(minutes, seconds)
 }
+
+private fun formatHz(hz: Int): String =
+    if (hz >= 1000) "%.1f kHz".format(hz / 1000f) else "$hz Hz"
 
 private fun initials(title: String): String =
     title.split(' ', '-', '_')
