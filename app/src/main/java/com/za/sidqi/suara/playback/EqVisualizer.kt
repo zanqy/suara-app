@@ -16,6 +16,7 @@ class EqVisualizer(
     private var visualizer: Visualizer? = null
     private var previous = FloatArray(BAND_COUNT)
     private var lastEmit = 0L
+    private var lastDataAt = 0L
 
     fun start(sessionId: Int): Boolean {
         if (ContextCompat.checkSelfPermission(
@@ -43,7 +44,8 @@ class EqVisualizer(
                         samplingRate: Int
                     ) {
                         if (fft == null) return
-                        val now = System.currentTimeMillis()
+                        lastDataAt = System.currentTimeMillis()
+                        val now = lastDataAt
                         if (now - lastEmit < EMIT_INTERVAL_MS) return
                         lastEmit = now
                         onHeights(computeHeights(fft))
@@ -72,19 +74,20 @@ class EqVisualizer(
             val endRatio = ((index + 1).toDouble() / BAND_COUNT).pow(2.0)
             val start = (startRatio * usable).toInt().coerceIn(1, usable - 1)
             val end = (endRatio * usable).toInt().coerceIn(start + 1, usable)
-            var sum = 0
-            var count = 0
+            var peak = 0
             for (bin in start until end) {
-                sum += fft[bin].toInt() and 0xFF
-                count++
+                val magnitude = fft[bin].toInt() and 0xFF
+                if (magnitude > peak) peak = magnitude
             }
-            val average = if (count > 0) sum.toFloat() / count else 0f
-            val target = MIN_HEIGHT + (average / 255f) * (MAX_HEIGHT - MIN_HEIGHT)
+            val target = MIN_HEIGHT + (peak / 255f) * (MAX_HEIGHT - MIN_HEIGHT)
             previous[index] = previous[index] * SMOOTHING + target * (1f - SMOOTHING)
             output[index] = previous[index].roundToInt().coerceIn(MIN_HEIGHT.toInt(), MAX_HEIGHT.toInt())
         }
         return output
     }
+
+    fun isLive(): Boolean =
+        visualizer != null && System.currentTimeMillis() - lastDataAt < LIVE_TIMEOUT_MS
 
     fun stop() {
         runCatching { visualizer?.setEnabled(false) }
@@ -99,5 +102,6 @@ class EqVisualizer(
         private const val MIN_HEIGHT = 5f
         private const val MAX_HEIGHT = 30f
         private const val SMOOTHING = 0.55f
+        private const val LIVE_TIMEOUT_MS = 800L
     }
 }

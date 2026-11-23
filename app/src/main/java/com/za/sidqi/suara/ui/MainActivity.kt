@@ -266,6 +266,7 @@ private fun SuaraRoot(openAudioRequest: Int = 0) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         hasPermission = hasAudioPermission(context)
+        AudioSettings.send(context, PlaybackService.ACTION_WIDGET_REFRESH)
         if (hasPermission) vm.scan()
     }
 

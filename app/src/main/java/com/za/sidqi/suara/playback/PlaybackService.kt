@@ -128,7 +128,10 @@ class PlaybackService : MediaSessionService() {
                         publishEqState()
                     }
                 }
-                ACTION_WIDGET_REFRESH -> publishWidgetState()
+                ACTION_WIDGET_REFRESH -> {
+                    publishWidgetState()
+                    attachVisualizer(mediaSession?.player?.audioSessionId ?: -1)
+                }
                 AudioSettings.ACTION_MIX_MODE -> {
                     applyMixMode(intent.getBooleanExtra(AudioSettings.EXTRA_ENABLED, false))
                 }
@@ -658,14 +661,15 @@ class PlaybackService : MediaSessionService() {
 
     private fun updateWidgetAnimation() {
         val playing = mediaSession?.player?.isPlaying == true
-        if (playing && visualizer == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (playing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (widgetAnimationJob?.isActive == true) return
             widgetAnimationJob = serviceScope.launch {
                 while (isActive) {
+                    delay(90)
+                    if (visualizer?.isLive() == true) continue
                     val heights = nextSyntheticHeights()
                     WidgetState.setHeights(this@PlaybackService, heights, false)
                     WidgetRenderer.updateAll(this@PlaybackService)
-                    delay(90)
                 }
             }
         } else {
