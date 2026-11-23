@@ -14,9 +14,16 @@ data class EqBand(
     val maxMb: Int
 )
 
+data class EqPresetSpec(
+    val name: String,
+    val curve: IntArray,
+    val preampMb: Int
+)
+
 data class EqState(
     val available: Boolean = false,
     val engine: String = "",
+    val bandMode: String = "AUTO",
     val enabled: Boolean = false,
     val preset: String = "Datar",
     val bands: List<EqBand> = emptyList(),
@@ -40,12 +47,16 @@ object AudioSettings {
     private const val KEY_EQ_ENABLED = "eq_enabled"
     private const val KEY_EQ_PRESET = "eq_preset"
     private const val KEY_EQ_BANDS = "eq_bands"
+    private const val KEY_EQ_BANDS_10 = "eq_bands_10"
+    private const val KEY_EQ_BANDS_5 = "eq_bands_5"
     private const val KEY_EQ_PREAMP = "eq_preamp"
+    private const val KEY_EQ_MODE = "eq_mode"
     private const val KEY_MIX = "mix_mode"
 
     const val ACTION_EQ_ENABLED = "com.za.sidqi.suara.EQ_ENABLED"
     const val ACTION_EQ_PRESET = "com.za.sidqi.suara.EQ_PRESET"
     const val ACTION_EQ_BAND = "com.za.sidqi.suara.EQ_BAND"
+    const val ACTION_EQ_MODE = "com.za.sidqi.suara.EQ_MODE"
     const val ACTION_EQ_PREAMP = "com.za.sidqi.suara.EQ_PREAMP"
     const val ACTION_EQ_REFRESH = "com.za.sidqi.suara.EQ_REFRESH"
     const val ACTION_MIX_MODE = "com.za.sidqi.suara.MIX_MODE"
@@ -54,8 +65,74 @@ object AudioSettings {
     const val EXTRA_PRESET = "preset"
     const val EXTRA_BAND = "band"
     const val EXTRA_LEVEL = "level"
+    const val EXTRA_MODE = "mode"
 
-    val presets = listOf("Datar", "Bass", "Vokal", "Treble", "Kustom")
+    val bandModes = listOf("AUTO", "10", "5")
+
+    val presetSpecs = listOf(
+        EqPresetSpec("Datar", IntArray(10), 0),
+        EqPresetSpec(
+            "Sub Bass",
+            intArrayOf(900, 800, 500, 100, -100, -200, -100, 0, 0, 0),
+            -500
+        ),
+        EqPresetSpec(
+            "Bass",
+            intArrayOf(600, 500, 400, 200, 0, -100, -200, -300, -400, -500),
+            -400
+        ),
+        EqPresetSpec(
+            "V-Shape",
+            intArrayOf(600, 500, 300, 0, -200, -300, -200, 100, 400, 500),
+            -400
+        ),
+        EqPresetSpec(
+            "Vokal",
+            intArrayOf(-200, -100, 0, 200, 400, 500, 400, 200, 0, -100),
+            -200
+        ),
+        EqPresetSpec(
+            "Podcast",
+            intArrayOf(-600, -500, -300, 0, 300, 500, 500, 300, 0, -200),
+            -300
+        ),
+        EqPresetSpec(
+            "Rock",
+            intArrayOf(500, 400, 200, -100, -200, 0, 200, 400, 500, 400),
+            -300
+        ),
+        EqPresetSpec(
+            "Pop",
+            intArrayOf(-100, 0, 200, 400, 500, 300, 0, -100, -200, -300),
+            -200
+        ),
+        EqPresetSpec(
+            "Jazz",
+            intArrayOf(300, 200, 100, 200, -100, -200, 0, 200, 300, 200),
+            -200
+        ),
+        EqPresetSpec(
+            "Elektronik",
+            intArrayOf(700, 600, 300, 0, -100, 200, 300, 200, 400, 500),
+            -400
+        ),
+        EqPresetSpec(
+            "Akustik",
+            intArrayOf(200, 100, 0, 200, 300, 200, 100, 200, 300, 200),
+            -200
+        ),
+        EqPresetSpec(
+            "Air",
+            intArrayOf(-300, -200, -100, 0, 100, 200, 300, 500, 700, 800),
+            -300
+        ),
+        EqPresetSpec("Kustom", IntArray(10), 0)
+    )
+
+    val presets = presetSpecs.map { it.name }
+
+    fun presetSpec(name: String): EqPresetSpec =
+        presetSpecs.firstOrNull { it.name == name } ?: presetSpecs.first()
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -85,14 +162,26 @@ object AudioSettings {
         prefs(context).edit().putInt(KEY_EQ_PREAMP, valueMb.coerceIn(-1200, 600)).apply()
     }
 
-    fun eqBands(context: Context): IntArray? =
-        prefs(context).getString(KEY_EQ_BANDS, null)
+    fun eqMode(context: Context): String =
+        prefs(context).getString(KEY_EQ_MODE, "AUTO") ?: "AUTO"
+
+    fun setEqMode(context: Context, mode: String) {
+        prefs(context).edit().putString(KEY_EQ_MODE, mode).apply()
+    }
+
+    fun eqBands(context: Context, count: Int = 10): IntArray? {
+        val key = if (count >= 10) KEY_EQ_BANDS_10 else KEY_EQ_BANDS_5
+        val raw = prefs(context).getString(key, null)
+            ?: prefs(context).getString(KEY_EQ_BANDS, null)
+        return raw
             ?.split(',')
             ?.mapNotNull { it.toIntOrNull() }
             ?.toIntArray()
+    }
 
     fun setEqBands(context: Context, levels: IntArray) {
-        prefs(context).edit().putString(KEY_EQ_BANDS, levels.joinToString(",")).apply()
+        val key = if (levels.size >= 10) KEY_EQ_BANDS_10 else KEY_EQ_BANDS_5
+        prefs(context).edit().putString(key, levels.joinToString(",")).apply()
     }
 
     fun mixMode(context: Context): Boolean = prefs(context).getBoolean(KEY_MIX, false)

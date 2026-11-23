@@ -68,6 +68,9 @@ class PlaybackService : MediaSessionService() {
                 AudioSettings.ACTION_EQ_PREAMP -> {
                     setEqPreamp(intent.getIntExtra(AudioSettings.EXTRA_LEVEL, 0))
                 }
+                AudioSettings.ACTION_EQ_MODE -> {
+                    setEqMode(intent.getStringExtra(AudioSettings.EXTRA_MODE) ?: "AUTO")
+                }
                 AudioSettings.ACTION_EQ_REFRESH -> {
                     if (engine == Engine.NONE) {
                         attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
@@ -101,6 +104,7 @@ class PlaybackService : MediaSessionService() {
                 addAction(AudioSettings.ACTION_EQ_PRESET)
                 addAction(AudioSettings.ACTION_EQ_BAND)
                 addAction(AudioSettings.ACTION_EQ_PREAMP)
+                addAction(AudioSettings.ACTION_EQ_MODE)
                 addAction(AudioSettings.ACTION_EQ_REFRESH)
                 addAction(AudioSettings.ACTION_MIX_MODE)
             },
@@ -133,12 +137,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     @SuppressLint("NewApi")
-    private fun attachEqualizer(sessionId: Int) {
-        if (sessionId <= 0 || sessionId == eqSessionId) return
+    private fun attachEqualizer(sessionId: Int, force: Boolean = false) {
+        if (sessionId <= 0) return
+        if (!force && sessionId == eqSessionId) return
         releaseEq()
         eqSessionId = sessionId
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val requestedMode = AudioSettings.eqMode(this)
+        if (requestedMode != "5" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val created = runCatching { buildDynamics(sessionId) }.getOrNull()
             if (created != null) {
                 dynamics = created
@@ -157,7 +163,7 @@ class PlaybackService : MediaSessionService() {
         }
 
         eqSessionId = -1
-        AudioState.publish(EqState())
+        AudioState.publish(EqState(bandMode = AudioSettings.eqMode(this)))
     }
 
     @RequiresApi(Build.VERSION_CODES.P)
@@ -174,15 +180,16 @@ class PlaybackService : MediaSessionService() {
             true
         ).build()
         val processor = DynamicsProcessing(0, sessionId, config)
-        processor.setEnabled(AudioSettings.eqEnabled(this))
-        processor.setInputGainAllChannelsTo(AudioSettings.eqPreamp(this) / 100f)
         val preset = AudioSettings.eqPreset(this)
-        val saved = AudioSettings.eqBands(this)
+        val saved = AudioSettings.eqBands(this, dynamicsCount)
         val levels = if (preset == "Kustom" && saved != null) {
             saved.copyOf(dynamicsCount)
         } else {
             presetLevels(preset, dynamicsCount)
         }
+        if (preset != "Kustom") AudioSettings.setEqPreamp(this, presetLevelsPreamp(preset))
+        processor.setEnabled(AudioSettings.eqEnabled(this))
+        processor.setInputGainAllChannelsTo(AudioSettings.eqPreamp(this) / 100f)
         for (i in 0 until dynamicsCount) {
             processor.setPreEqBandAllChannelsTo(
                 i,
@@ -202,15 +209,16 @@ class PlaybackService : MediaSessionService() {
             AudioState.publish(EqState())
             return
         }
-        processor.setEnabled(AudioSettings.eqEnabled(this))
-        processor.setInputGainAllChannelsTo(AudioSettings.eqPreamp(this) / 100f)
         val preset = AudioSettings.eqPreset(this)
-        val saved = AudioSettings.eqBands(this)
+        val saved = AudioSettings.eqBands(this, dynamicsCount)
         val levels = if (preset == "Kustom" && saved != null) {
             saved.copyOf(dynamicsCount)
         } else {
             presetLevels(preset, dynamicsCount)
         }
+        if (preset != "Kustom") AudioSettings.setEqPreamp(this, presetLevelsPreamp(preset))
+        processor.setEnabled(AudioSettings.eqEnabled(this))
+        processor.setInputGainAllChannelsTo(AudioSettings.eqPreamp(this) / 100f)
         for (i in 0 until dynamicsCount) {
             processor.setPreEqBandAllChannelsTo(
                 i,
@@ -247,6 +255,7 @@ class PlaybackService : MediaSessionService() {
             EqState(
                 available = true,
                 engine = "DYNAMICS",
+                bandMode = AudioSettings.eqMode(this),
                 enabled = runCatching { processor.enabled }.getOrDefault(false),
                 preset = AudioSettings.eqPreset(this),
                 bands = bands,
@@ -272,7 +281,7 @@ class PlaybackService : MediaSessionService() {
             return
         }
         val preset = AudioSettings.eqPreset(this)
-        val saved = AudioSettings.eqBands(this)
+        val saved = AudioSettings.eqBands(this, count)
         val levels = if (preset == "Kustom" && saved != null && saved.size >= count) {
             saved
         } else {
@@ -312,6 +321,7 @@ class PlaybackService : MediaSessionService() {
             EqState(
                 available = true,
                 engine = "EQUALIZER",
+                bandMode = AudioSettings.eqMode(this),
                 enabled = runCatching { eq.enabled }.getOrDefault(false),
                 preset = AudioSettings.eqPreset(this),
                 bands = bands,
@@ -334,6 +344,9 @@ class PlaybackService : MediaSessionService() {
 
     private fun setEqPreset(preset: String) {
         AudioSettings.setEqPreset(this, preset)
+        if (preset != "Kustom") {
+            AudioSettings.setEqPreamp(this, presetLevelsPreamp(preset))
+        }
         when (engine) {
             Engine.DYNAMICS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 runCatching { applyDynamicsSettings() }
@@ -364,7 +377,7 @@ class PlaybackService : MediaSessionService() {
                 DynamicsProcessing.EqBand(true, dynamicsCutoffs[index], level / 100f)
             )
         }
-        val saved = AudioSettings.eqBands(this)?.copyOf(dynamicsCount) ?: IntArray(dynamicsCount)
+        val saved = AudioSettings.eqBands(this, dynamicsCount)?.copyOf(dynamicsCount) ?: IntArray(dynamicsCount)
         saved[index] = level
         AudioSettings.setEqBands(this, saved)
         AudioSettings.setEqPreset(this, "Kustom")
@@ -394,6 +407,12 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private fun setEqMode(mode: String) {
+        AudioSettings.setEqMode(this, mode)
+        eqSessionId = -1
+        attachEqualizer(mediaSession?.player?.audioSessionId ?: -1, force = true)
+    }
+
     private fun publishEqState() {
         when (engine) {
             Engine.DYNAMICS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -405,17 +424,15 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun presetLevels(preset: String, count: Int): IntArray {
-        val ten = when (preset) {
-            "Bass" -> intArrayOf(600, 500, 400, 200, 0, -100, -200, -300, -400, -500)
-            "Vokal" -> intArrayOf(-200, -100, 0, 200, 400, 500, 400, 200, 0, -100)
-            "Treble" -> intArrayOf(-400, -300, -200, -100, 0, 100, 200, 400, 500, 600)
-            else -> IntArray(10)
-        }
-        if (count == 10) return ten
+        val ten = AudioSettings.presetSpec(preset).curve
+        if (count == 10) return ten.copyOf()
         return IntArray(count) { i ->
             ten[(i * 9 / (count - 1).coerceAtLeast(1)).coerceIn(0, 9)]
         }
     }
+
+    private fun presetLevelsPreamp(preset: String): Int =
+        AudioSettings.presetSpec(preset).preampMb
 
     private fun releaseEq() {
         runCatching { dynamics?.release() }

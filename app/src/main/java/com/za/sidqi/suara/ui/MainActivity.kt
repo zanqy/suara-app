@@ -235,6 +235,7 @@ private fun SuaraRoot() {
     var playlistTarget by remember { mutableStateOf<TrackEntity?>(null) }
     var appVolume by remember { mutableStateOf(AudioSettings.appVolume(context)) }
     var mixMode by remember { mutableStateOf(AudioSettings.mixMode(context)) }
+    var bandMode by remember { mutableStateOf(AudioSettings.eqMode(context)) }
     val eqState by AudioState.eq.collectAsState()
     var controller by remember { mutableStateOf<MediaController?>(null) }
     var currentTrack by remember { mutableStateOf<TrackEntity?>(null) }
@@ -522,6 +523,14 @@ private fun SuaraRoot() {
                         AudioSettings.setEqPreset(context, preset)
                         AudioSettings.send(context, AudioSettings.ACTION_EQ_PRESET) {
                             putExtra(AudioSettings.EXTRA_PRESET, preset)
+                        }
+                    },
+                    bandMode = bandMode,
+                    onBandMode = { mode ->
+                        bandMode = mode
+                        AudioSettings.setEqMode(context, mode)
+                        AudioSettings.send(context, AudioSettings.ACTION_EQ_MODE) {
+                            putExtra(AudioSettings.EXTRA_MODE, mode)
                         }
                     },
                     onBand = { band, level ->
@@ -953,6 +962,8 @@ private fun AudioScreen(
     appVolume: Float,
     onVolume: (Float) -> Unit,
     eqState: EqState,
+    bandMode: String,
+    onBandMode: (String) -> Unit,
     onEqEnabled: (Boolean) -> Unit,
     onPreset: (String) -> Unit,
     onBand: (Int, Int) -> Unit,
@@ -995,9 +1006,10 @@ private fun AudioScreen(
                 color = Ink
             )
             Text(
-                when (eqState.engine) {
-                    "DYNAMICS" -> "10 BAND · DYNAMICS PROCESSING"
-                    "EQUALIZER" -> "${eqState.bands.size} BAND · FALLBACK EQUALIZER"
+                when {
+                    eqState.engine == "DYNAMICS" -> "10 BAND · DYNAMICS PROCESSING"
+                    eqState.engine == "EQUALIZER" && eqState.bandMode == "5" -> "5 BAND · EQUALIZER"
+                    eqState.engine == "EQUALIZER" -> "5 BAND · FALLBACK EQUALIZER"
                     else -> "MENUNGGU AUDIO"
                 },
                 fontFamily = Plex,
@@ -1048,6 +1060,39 @@ private fun AudioScreen(
             }
 
             Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("MODE BAND", fontFamily = Plex, fontSize = 8.sp, color = Muted, letterSpacing = 1.sp)
+                Text("EQ ENGINE", fontFamily = Plex, fontSize = 8.sp, color = Mint, letterSpacing = 1.sp)
+            }
+            Spacer(Modifier.height(5.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AudioSettings.bandModes.forEach { mode ->
+                    FilterChip(
+                        selected = bandMode == mode,
+                        onClick = { onBandMode(mode) },
+                        label = {
+                            Text(
+                                if (mode == "AUTO") "AUTO" else "$mode BAND",
+                                fontFamily = Plex,
+                                fontSize = 8.sp
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Mint,
+                            selectedLabelColor = Color(0xFF14180F),
+                            labelColor = Muted,
+                            containerColor = Surface
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("PRESET · ${eqState.preset}", fontFamily = Plex, fontSize = 8.sp, color = Muted, letterSpacing = 1.sp)
+                Text("${AudioSettings.presets.size} PILIHAN", fontFamily = Plex, fontSize = 8.sp, color = Amber, letterSpacing = 1.sp)
+            }
+            Spacer(Modifier.height(5.dp))
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
