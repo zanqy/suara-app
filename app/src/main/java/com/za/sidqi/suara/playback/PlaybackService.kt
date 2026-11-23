@@ -149,7 +149,7 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, player).build()
         publishWidgetState()
         serviceScope.launch {
-            restoreQueueIfNeeded()
+            runCatching { restoreQueueIfNeeded() }
             publishWidgetState()
         }
         ContextCompat.registerReceiver(
@@ -176,7 +176,7 @@ class PlaybackService : MediaSessionService() {
                 if (player != null) {
                     if (player.mediaItemCount == 0) {
                         serviceScope.launch {
-                            restoreQueueIfNeeded()
+                            runCatching { restoreQueueIfNeeded() }
                             if (player.mediaItemCount > 0) {
                                 if (player.isPlaying) player.pause() else player.play()
                                 publishWidgetState()
@@ -528,6 +528,10 @@ class PlaybackService : MediaSessionService() {
         AudioSettings.presetSpec(preset).preampMb
 
     private fun publishWidgetState() {
+        runCatching { publishWidgetStateInternal() }
+    }
+
+    private fun publishWidgetStateInternal() {
         val player = mediaSession?.player ?: return
         val item = player.currentMediaItem
         val metadata = item?.mediaMetadata
@@ -612,6 +616,10 @@ class PlaybackService : MediaSessionService() {
             .build()
 
     private fun attachVisualizer(sessionId: Int) {
+        runCatching { attachVisualizerInternal(sessionId) }
+    }
+
+    private fun attachVisualizerInternal(sessionId: Int) {
         if (sessionId <= 0) {
             visualizer?.stop()
             visualizer = null

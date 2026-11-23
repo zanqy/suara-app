@@ -31,13 +31,15 @@ object WidgetRenderer {
     )
 
     fun updateAll(context: Context, animated: Boolean = false) {
-        val manager = AppWidgetManager.getInstance(context)
-        val ids = manager.getAppWidgetIds(
-            ComponentName(context, SuaraWidgetProvider::class.java)
-        )
-        if (ids.isEmpty()) return
-        val views = build(context, animated)
-        for (id in ids) manager.updateAppWidget(id, views)
+        runCatching {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(
+                ComponentName(context, SuaraWidgetProvider::class.java)
+            )
+            if (ids.isEmpty()) return
+            val views = build(context, animated)
+            for (id in ids) manager.updateAppWidget(id, views)
+        }
     }
 
     fun build(context: Context, animated: Boolean = false): RemoteViews {
@@ -92,11 +94,13 @@ object WidgetRenderer {
     @RequiresApi(Build.VERSION_CODES.S)
     private fun applyBarHeights(views: RemoteViews, heights: IntArray) {
         barIds.forEachIndexed { index, id ->
-            views.setViewLayoutHeight(
-                id,
-                heights.getOrElse(index) { 8 }.toFloat(),
-                TypedValue.COMPLEX_UNIT_DIP
-            )
+            runCatching {
+                views.setViewLayoutHeight(
+                    id,
+                    heights.getOrElse(index) { 8 }.toFloat(),
+                    TypedValue.COMPLEX_UNIT_DIP
+                )
+            }
         }
     }
 
