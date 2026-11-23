@@ -61,6 +61,7 @@ class PlaybackService : MediaSessionService() {
     private var widgetAnimationJob: Job? = null
     private var visualizer: EqVisualizer? = null
     private var visualizerSessionId = -1
+    private var fftSilent = false
     private var restoreDeferred: CompletableDeferred<Unit>? = null
     private val syntheticHeights = FloatArray(28) { 8f }
 
@@ -648,7 +649,8 @@ class PlaybackService : MediaSessionService() {
             return
         }
         val engine = EqVisualizer(this) { heights ->
-            WidgetState.setHeights(this@PlaybackService, heights, true)
+            fftSilent = heights.all { it <= 6 }
+            WidgetState.setHeights(this@PlaybackService, heights, !fftSilent)
             WidgetRenderer.updateAll(this@PlaybackService)
         }
         if (engine.start(sessionId)) {
@@ -666,7 +668,7 @@ class PlaybackService : MediaSessionService() {
             widgetAnimationJob = serviceScope.launch {
                 while (isActive) {
                     delay(90)
-                    if (visualizer?.isLive() == true) continue
+                    if (visualizer?.isLive() == true && !fftSilent) continue
                     val heights = nextSyntheticHeights()
                     WidgetState.setHeights(this@PlaybackService, heights, false)
                     WidgetRenderer.updateAll(this@PlaybackService)
@@ -676,6 +678,7 @@ class PlaybackService : MediaSessionService() {
             widgetAnimationJob?.cancel()
             widgetAnimationJob = null
             if (!playing) {
+                fftSilent = false
                 WidgetState.setHeights(this, IntArray(28), false)
                 WidgetRenderer.updateAll(this)
             }
