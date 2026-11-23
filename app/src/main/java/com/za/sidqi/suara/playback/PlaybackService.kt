@@ -88,11 +88,13 @@ class PlaybackService : MediaSessionService() {
             if (isPlaying) {
                 attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
                 attachVisualizer(mediaSession?.player?.audioSessionId ?: -1)
+                ensureEnvelope(mediaSession?.player?.currentMediaItem?.mediaId)
             }
             publishWidgetState()
         }
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            ensureEnvelope(mediaItem?.mediaId)
             publishWidgetState()
         }
 
@@ -619,6 +621,17 @@ class PlaybackService : MediaSessionService() {
             )
             .build()
 
+    private fun ensureEnvelope(mediaId: String?) {
+        val trackId = mediaId?.toLongOrNull() ?: return
+        if (RhythmEnvelope.get(trackId) != null) return
+        serviceScope.launch {
+            val track = runCatching {
+                SuaraDatabase.get(this@PlaybackService).dao().trackById(trackId)
+            }.getOrNull() ?: return@launch
+            RhythmEnvelope.analyze(this@PlaybackService, track)
+        }
+    }
+
     private fun attachVisualizer(sessionId: Int) {
         runCatching { attachVisualizerInternal(sessionId) }
     }
@@ -669,7 +682,14 @@ class PlaybackService : MediaSessionService() {
                 while (isActive) {
                     delay(90)
                     if (visualizer?.isLive() == true && !fftSilent) continue
-                    val heights = nextSyntheticHeights()
+                    val player = mediaSession?.player
+                    val trackId = player?.currentMediaItem?.mediaId?.toLongOrNull() ?: -1L
+                    val envelope = RhythmEnvelope.get(trackId)
+                    val heights = if (envelope != null && envelope.isNotEmpty()) {
+                        heightsFromEnvelope(envelope, player?.currentPosition ?: 0L)
+                    } else {
+                        nextSyntheticHeights()
+                    }
                     WidgetState.setHeights(this@PlaybackService, heights, false)
                     WidgetRenderer.updateAll(this@PlaybackService)
                 }
@@ -682,6 +702,19 @@ class PlaybackService : MediaSessionService() {
                 WidgetState.setHeights(this, IntArray(28), false)
                 WidgetRenderer.updateAll(this)
             }
+        }
+    }
+
+    private fun heightsFromEnvelope(envelope: IntArray, positionMs: Long): IntArray {
+        val index = (positionMs / 100L).toInt().coerceIn(envelope.indices)
+        val level = envelope[index] / 100f
+        val t = System.currentTimeMillis() / 1000f
+        return IntArray(28) { i ->
+            val wave = abs(sin(i * 0.62f + t * 5.5f))
+            val detail = abs(sin(i * 1.7f + t * 9f))
+            (5f + level * (9f + wave * 14f + detail * 3f))
+                .roundToInt()
+                .coerceIn(5, 30)
         }
     }
 

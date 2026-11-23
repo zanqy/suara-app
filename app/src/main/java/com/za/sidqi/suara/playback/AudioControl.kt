@@ -186,7 +186,7 @@ object AudioSettings {
     }
 
     fun visualizerEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_VISUALIZER, true)
+        prefs(context).getBoolean(KEY_VISUALIZER, false)
 
     fun setVisualizerEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_VISUALIZER, enabled).apply()

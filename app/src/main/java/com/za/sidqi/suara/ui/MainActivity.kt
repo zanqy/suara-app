@@ -686,7 +686,7 @@ private fun PermissionCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
             Text("Izin musik diperlukan", fontFamily = Fraunces, fontSize = 17.sp, color = Ink)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Suara perlu membaca file audio di Music/Download. Izin mikrofon hanya dipakai untuk visualizer widget, bukan merekam suara.",
+                "Suara perlu membaca file audio di Music/Download. Tidak ada data yang dikirim keluar.",
                 fontFamily = DmSans, fontSize = 12.sp, color = Muted
             )
             Spacer(Modifier.height(12.dp))
@@ -1718,7 +1718,6 @@ private fun hasAudioPermission(context: android.content.Context): Boolean {
 private fun requiredPermissions(): Array<String> = buildList {
     add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
     if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-    add(Manifest.permission.RECORD_AUDIO)
 }.toTypedArray()
 
 private fun formatDuration(ms: Long): String {
