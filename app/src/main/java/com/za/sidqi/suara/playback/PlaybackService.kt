@@ -18,12 +18,16 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.za.sidqi.suara.data.FavoriteEntity
 import com.za.sidqi.suara.data.SuaraDatabase
+import com.za.sidqi.suara.widget.WidgetRenderer
 import com.za.sidqi.suara.widget.WidgetSnapshot
 import com.za.sidqi.suara.widget.WidgetState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -45,6 +49,7 @@ class PlaybackService : MediaSessionService() {
     private var engine = Engine.NONE
     private var eqSessionId = -1
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var widgetAnimationJob: Job? = null
 
     private val dynamicsCount = 10
     private val dynamicsCutoffs = floatArrayOf(
@@ -517,6 +522,7 @@ class PlaybackService : MediaSessionService() {
             )
         )
         sendWidgetBroadcast()
+        updateWidgetAnimation()
         if (trackId > 0) {
             serviceScope.launch {
                 val fav = runCatching {
@@ -525,6 +531,23 @@ class PlaybackService : MediaSessionService() {
                 WidgetState.setFavorite(this@PlaybackService, fav)
                 sendWidgetBroadcast()
             }
+        }
+    }
+
+    private fun updateWidgetAnimation() {
+        val playing = mediaSession?.player?.isPlaying == true
+        if (playing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (widgetAnimationJob?.isActive == true) return
+            widgetAnimationJob = serviceScope.launch {
+                while (isActive) {
+                    WidgetRenderer.updateAll(this@PlaybackService, animated = true)
+                    delay(220)
+                }
+            }
+        } else {
+            widgetAnimationJob?.cancel()
+            widgetAnimationJob = null
+            WidgetRenderer.updateAll(this, animated = false)
         }
     }
 
@@ -561,6 +584,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         runCatching { unregisterReceiver(controlReceiver) }
         serviceScope.cancel()
+        widgetAnimationJob = null
         releaseEq()
         eqSessionId = -1
         mediaSession?.run {

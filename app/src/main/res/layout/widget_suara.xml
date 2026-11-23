@@ -40,12 +40,12 @@
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
-        android:layout_height="42dp"
+        android:layout_height="38dp"
         android:layout_marginTop="3dp"
         android:fontFamily="serif"
         android:text="Belum ada lagu"
         android:textColor="#F3F0E7"
-        android:textSize="20sp"
+        android:textSize="17sp"
         android:textStyle="bold"
         android:maxLines="2"
         android:ellipsize="end"
@@ -58,206 +58,27 @@
         android:fontFamily="sans-serif"
         android:text="Tap untuk membuka Suara"
         android:textColor="#9AA497"
-        android:textSize="10sp"
+        android:textSize="9sp"
         android:maxLines="1"
         android:ellipsize="end" />
 
     <LinearLayout
-        android:id="@+id/widget_spectrum"
         android:layout_width="match_parent"
-        android:layout_height="30dp"
-        android:layout_marginTop="4dp"
-        android:orientation="horizontal"
-        android:gravity="bottom|center_vertical"
-        android:clipToPadding="false">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="8dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="12dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="20dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_amber" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="14dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="25dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_mint" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="17dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="29dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="22dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_amber" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="12dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="24dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="16dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_mint" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="31dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="23dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_amber" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="15dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="27dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="18dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_mint" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="11dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="24dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_amber" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="16dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="9dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="21dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_mint" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="13dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="26dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_amber" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="17dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="10dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="20dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_mint" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="14dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
-                    android:background="@drawable/bar_coral" />
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="28dp"
-                    android:layout_weight="1"
-                    android:layout_gravity="bottom"
-                    android:background="@drawable/bar_coral" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
+        android:layout_height="42dp"
         android:layout_marginTop="4dp"
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="42dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
             <ImageButton
                 android:id="@+id/widget_prev"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:background="@drawable/widget_ctl_bg"
                 android:padding="7dp"
                 android:scaleType="fitCenter"
@@ -266,19 +87,19 @@
 
             <ImageButton
                 android:id="@+id/widget_play"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:layout_marginStart="6dp"
                 android:background="@drawable/widget_play_bg"
-                android:padding="9dp"
+                android:padding="8dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_widget_play"
                 android:contentDescription="Putar" />
 
             <ImageButton
                 android:id="@+id/widget_next"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginStart="6dp"
                 android:background="@drawable/widget_ctl_bg"
                 android:padding="7dp"
@@ -294,14 +115,14 @@
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="42dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
             <ImageButton
                 android:id="@+id/widget_repeat"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:background="@drawable/widget_ctl_bg"
                 android:padding="7dp"
                 android:scaleType="fitCenter"
@@ -310,8 +131,8 @@
 
             <ImageButton
                 android:id="@+id/widget_favorite"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginStart="5dp"
                 android:background="@drawable/widget_ctl_bg"
                 android:padding="7dp"
@@ -321,8 +142,8 @@
 
             <ImageButton
                 android:id="@+id/widget_eq"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginStart="5dp"
                 android:background="@drawable/widget_ctl_bg"
                 android:padding="7dp"
@@ -330,5 +151,212 @@
                 android:src="@drawable/ic_widget_eq"
                 android:contentDescription="Equalizer" />
         </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_spectrum"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal"
+        android:gravity="bottom|center_vertical"
+        android:clipToPadding="false">
+
+                <TextView
+                    android:id="@+id/widget_bar_0"
+                    android:layout_width="0dp"
+                    android:layout_height="8dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_1"
+                    android:layout_width="0dp"
+                    android:layout_height="12dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_2"
+                    android:layout_width="0dp"
+                    android:layout_height="20dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_amber" />
+                <TextView
+                    android:id="@+id/widget_bar_3"
+                    android:layout_width="0dp"
+                    android:layout_height="14dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_4"
+                    android:layout_width="0dp"
+                    android:layout_height="25dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_mint" />
+                <TextView
+                    android:id="@+id/widget_bar_5"
+                    android:layout_width="0dp"
+                    android:layout_height="17dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_6"
+                    android:layout_width="0dp"
+                    android:layout_height="29dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_7"
+                    android:layout_width="0dp"
+                    android:layout_height="22dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_amber" />
+                <TextView
+                    android:id="@+id/widget_bar_8"
+                    android:layout_width="0dp"
+                    android:layout_height="12dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_9"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_10"
+                    android:layout_width="0dp"
+                    android:layout_height="16dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_mint" />
+                <TextView
+                    android:id="@+id/widget_bar_11"
+                    android:layout_width="0dp"
+                    android:layout_height="27dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_12"
+                    android:layout_width="0dp"
+                    android:layout_height="23dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_amber" />
+                <TextView
+                    android:id="@+id/widget_bar_13"
+                    android:layout_width="0dp"
+                    android:layout_height="15dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_14"
+                    android:layout_width="0dp"
+                    android:layout_height="26dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_15"
+                    android:layout_width="0dp"
+                    android:layout_height="18dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_mint" />
+                <TextView
+                    android:id="@+id/widget_bar_16"
+                    android:layout_width="0dp"
+                    android:layout_height="11dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_17"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_amber" />
+                <TextView
+                    android:id="@+id/widget_bar_18"
+                    android:layout_width="0dp"
+                    android:layout_height="16dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_19"
+                    android:layout_width="0dp"
+                    android:layout_height="9dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_20"
+                    android:layout_width="0dp"
+                    android:layout_height="21dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_mint" />
+                <TextView
+                    android:id="@+id/widget_bar_21"
+                    android:layout_width="0dp"
+                    android:layout_height="13dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_22"
+                    android:layout_width="0dp"
+                    android:layout_height="25dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_amber" />
+                <TextView
+                    android:id="@+id/widget_bar_23"
+                    android:layout_width="0dp"
+                    android:layout_height="17dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_24"
+                    android:layout_width="0dp"
+                    android:layout_height="10dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_25"
+                    android:layout_width="0dp"
+                    android:layout_height="20dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_mint" />
+                <TextView
+                    android:id="@+id/widget_bar_26"
+                    android:layout_width="0dp"
+                    android:layout_height="14dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom" android:layout_marginEnd="1dp"
+                    android:background="@drawable/bar_coral" />
+                <TextView
+                    android:id="@+id/widget_bar_27"
+                    android:layout_width="0dp"
+                    android:layout_height="28dp"
+                    android:layout_weight="1"
+                    android:layout_gravity="bottom"
+                    android:background="@drawable/bar_coral" />
     </LinearLayout>
 </LinearLayout>
