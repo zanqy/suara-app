@@ -60,6 +60,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -112,14 +113,40 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlin.math.roundToInt
 
-private val Bg = Color(0xFF0B0D0B)
-private val Surface = Color(0xFF171B17)
-private val Ink = Color(0xFFF3F0E7)
-private val Muted = Color(0xFFB7BFB4)
-private val Coral = Color(0xFFFF7654)
-private val Amber = Color(0xFFF3C45C)
-private val Mint = Color(0xFF7CE0B4)
-private val Line = Color(0xFF333B33)
+private var Bg by mutableStateOf(Color(0xFF0B0D0B))
+private var Surface by mutableStateOf(Color(0xFF171B17))
+private var Ink by mutableStateOf(Color(0xFFF3F0E7))
+private var Muted by mutableStateOf(Color(0xFFB7BFB4))
+private var Coral by mutableStateOf(Color(0xFFFF7654))
+private var Amber by mutableStateOf(Color(0xFFF3C45C))
+private var Mint by mutableStateOf(Color(0xFF7CE0B4))
+private var Line by mutableStateOf(Color(0xFF333B33))
+
+private var OnAccent by mutableStateOf(Color(0xFF14180F))
+private var SearchBg by mutableStateOf(Color(0xFF101410))
+private var Placeholder by mutableStateOf(Color(0xFF737C72))
+private var GraphGrid by mutableStateOf(Color(0xFF2A312A))
+private var GraphLine by mutableStateOf(Color(0xFF252C25))
+private var GraphMid by mutableStateOf(Color(0xFF4B554A))
+private var GraphDot by mutableStateOf(Color(0xFF0B0D0B))
+
+private fun applySuaraTheme(light: Boolean) {
+    Bg = if (light) Color(0xFFF0ECE1) else Color(0xFF0B0D0B)
+    Surface = if (light) Color(0xFFFFFDF8) else Color(0xFF171B17)
+    Ink = if (light) Color(0xFF1B201A) else Color(0xFFF3F0E7)
+    Muted = if (light) Color(0xFF57604F) else Color(0xFFB7BFB4)
+    Coral = if (light) Color(0xFFBE4227) else Color(0xFFFF7654)
+    Amber = if (light) Color(0xFF8A5D14) else Color(0xFFF3C45C)
+    Mint = if (light) Color(0xFF2F7659) else Color(0xFF7CE0B4)
+    Line = if (light) Color(0xFFCBC5B5) else Color(0xFF333B33)
+    OnAccent = if (light) Color(0xFFFFFDF8) else Color(0xFF14180F)
+    SearchBg = if (light) Color(0xFFFFFDF8) else Color(0xFF101410)
+    Placeholder = if (light) Color(0xFF7C8475) else Color(0xFF737C72)
+    GraphGrid = if (light) Color(0xFFD8D2C3) else Color(0xFF2A312A)
+    GraphLine = if (light) Color(0xFFCBC5B5) else Color(0xFF252C25)
+    GraphMid = if (light) Color(0xFF8A9487) else Color(0xFF4B554A)
+    GraphDot = if (light) Color(0xFFFFFDF8) else Color(0xFF0B0D0B)
+}
 
 private fun suaraIcon(name: String, pathData: String): ImageVector =
     ImageVector.Builder(
@@ -209,18 +236,38 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(EXTRA_OPEN_AUDIO, false) == true) {
             openAudioRequest = 1
         }
+        var lightTheme by mutableStateOf(ThemeSettings.isLight(this))
+        applySuaraTheme(lightTheme)
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
+            val scheme = if (lightTheme) {
+                lightColorScheme(
                     primary = Coral,
                     background = Bg,
                     surface = Surface,
-                    onPrimary = Color(0xFF14180F),
+                    onPrimary = OnAccent,
                     onBackground = Ink,
                     onSurface = Ink
                 )
-            ) {
-                SuaraRoot(openAudioRequest = openAudioRequest)
+            } else {
+                darkColorScheme(
+                    primary = Coral,
+                    background = Bg,
+                    surface = Surface,
+                    onPrimary = OnAccent,
+                    onBackground = Ink,
+                    onSurface = Ink
+                )
+            }
+            MaterialTheme(colorScheme = scheme) {
+                SuaraRoot(
+                    openAudioRequest = openAudioRequest,
+                    lightTheme = lightTheme,
+                    onToggleTheme = {
+                        lightTheme = !lightTheme
+                        applySuaraTheme(lightTheme)
+                        ThemeSettings.set(this@MainActivity, lightTheme)
+                    }
+                )
             }
         }
     }
@@ -236,7 +283,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SuaraRoot(openAudioRequest: Int = 0) {
+private fun SuaraRoot(
+    openAudioRequest: Int = 0,
+    lightTheme: Boolean = false,
+    onToggleTheme: () -> Unit = {}
+) {
     val context = LocalContext.current
     val vm: LibraryViewModel = viewModel()
     val tracks by vm.visibleTracks.collectAsState()
@@ -390,6 +441,14 @@ private fun SuaraRoot(openAudioRequest: Int = 0) {
                     Text("MUSIK LOKAL", fontFamily = Plex, fontSize = 10.sp, color = Muted, letterSpacing = 2.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onToggleTheme) {
+                        Text(
+                            if (lightTheme) "MALAM" else "SIANG",
+                            fontFamily = Plex,
+                            fontSize = 9.sp,
+                            color = Coral
+                        )
+                    }
                     TextButton(onClick = {
                         showAudio = true
                         AudioSettings.send(context, AudioSettings.ACTION_EQ_REFRESH)
@@ -416,7 +475,7 @@ private fun SuaraRoot(openAudioRequest: Int = 0) {
                         label = { Text(item.label, fontFamily = Plex, fontSize = 10.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Coral,
-                            selectedLabelColor = Color(0xFF14180F),
+                            selectedLabelColor = OnAccent,
                             labelColor = Muted,
                             containerColor = Surface
                         )
@@ -658,7 +717,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
             .height(48.dp)
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, Line, RoundedCornerShape(12.dp))
-            .background(Color(0xFF101410))
+            .background(SearchBg)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -670,7 +729,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
             modifier = Modifier.fillMaxWidth()
         )
         if (value.isBlank()) {
-            Text("Cari judul atau artis…", color = Color(0xFF737C72), fontSize = 12.sp, fontFamily = Plex)
+            Text("Cari judul atau artis…", color = Placeholder, fontSize = 12.sp, fontFamily = Plex)
         }
     }
 }
@@ -693,7 +752,7 @@ private fun PermissionCard(onRequest: () -> Unit, onOpenSettings: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onRequest,
-                    colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF14180F))
+                    colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = OnAccent)
                 ) { Text("Izinkan", fontFamily = Plex, fontSize = 11.sp) }
                 TextButton(onClick = onOpenSettings) {
                     Text("Buka Pengaturan", fontFamily = Plex, fontSize = 11.sp, color = Muted)
@@ -804,7 +863,7 @@ private fun ArtBlock(track: TrackEntity, size: androidx.compose.ui.unit.Dp) {
     ) {
         Text(
             initials(track.title),
-            color = Color(0xFF14180F),
+            color = OnAccent,
             fontFamily = Plex,
             fontWeight = FontWeight.Bold,
             fontSize = if (size > 100.dp) 30.sp else 13.sp
@@ -948,12 +1007,12 @@ private fun NowPlaying(
                 onClick = onToggle,
                 modifier = Modifier.size(64.dp),
                 shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF14180F))
+                colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = OnAccent)
             ) {
                 Icon(
                     if (isPlaying) SuaraIcons.Pause else SuaraIcons.Play,
                     contentDescription = if (isPlaying) "Jeda" else "Putar",
-                    tint = Color(0xFF14180F),
+                    tint = OnAccent,
                     modifier = Modifier.size(30.dp)
                 )
             }
@@ -1112,7 +1171,7 @@ private fun AudioScreen(
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Mint,
-                            selectedLabelColor = Color(0xFF14180F),
+                            selectedLabelColor = OnAccent,
                             labelColor = Muted,
                             containerColor = Surface
                         )
@@ -1137,7 +1196,7 @@ private fun AudioScreen(
                         label = { Text(preset, fontFamily = Plex, fontSize = 9.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Coral,
-                            selectedLabelColor = Color(0xFF14180F),
+                            selectedLabelColor = OnAccent,
                             labelColor = Muted,
                             containerColor = Surface
                         )
@@ -1280,7 +1339,7 @@ private fun EqCurve(eqState: EqState, onBand: (Int, Int) -> Unit) {
         for (g in 0..4) {
             val gy = top + (bottom - top) * g / 4f
             drawLine(
-                color = Color(0xFF2A312A),
+                color = GraphGrid,
                 start = Offset(0f, gy),
                 end = Offset(width, gy),
                 strokeWidth = 1.dp.toPx()
@@ -1288,14 +1347,14 @@ private fun EqCurve(eqState: EqState, onBand: (Int, Int) -> Unit) {
         }
         bands.forEachIndexed { index, _ ->
             drawLine(
-                color = Color(0xFF252C25),
+                color = GraphLine,
                 start = Offset(x(index), top),
                 end = Offset(x(index), bottom),
                 strokeWidth = 1.dp.toPx()
             )
         }
         drawLine(
-            color = Color(0xFF4B554A),
+            color = GraphMid,
             start = Offset(0f, y(0)),
             end = Offset(width, y(0)),
             strokeWidth = 1.dp.toPx(),
@@ -1326,7 +1385,7 @@ private fun EqCurve(eqState: EqState, onBand: (Int, Int) -> Unit) {
         )
         bands.forEachIndexed { index, band ->
             val center = Offset(x(index), y(band.levelMb))
-            drawCircle(Color(0xFF0B0D0B), radius = 5.2.dp.toPx(), center = center)
+            drawCircle(GraphDot, radius = 5.2.dp.toPx(), center = center)
             drawCircle(Amber, radius = 3.3.dp.toPx(), center = center)
         }
     }
@@ -1396,14 +1455,14 @@ private fun EqFader(band: EqBand, onBand: (Int, Int) -> Unit) {
             Canvas(Modifier.fillMaxSize()) {
                 val cx = size.width / 2f
                 drawLine(
-                    color = Color(0xFF2A312A),
+                    color = GraphGrid,
                     start = Offset(cx, 4.dp.toPx()),
                     end = Offset(cx, size.height - 4.dp.toPx()),
                     strokeWidth = 4.dp.toPx(),
                     cap = StrokeCap.Round
                 )
                 drawLine(
-                    color = Color(0xFF4B554A),
+                    color = GraphMid,
                     start = Offset(cx - 7.dp.toPx(), size.height / 2f),
                     end = Offset(cx + 7.dp.toPx(), size.height / 2f),
                     strokeWidth = 1.dp.toPx()
@@ -1560,7 +1619,7 @@ private fun PlaylistSheet(
                 enabled = detail.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(44.dp),
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = Color(0xFF14180F))
+                colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = OnAccent)
             ) { Text("PUTAR SEMUA", fontFamily = Plex, fontSize = 11.sp) }
             Spacer(Modifier.height(10.dp))
             if (detail.isEmpty()) {
