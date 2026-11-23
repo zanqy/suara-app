@@ -1,10 +1,12 @@
 package com.za.sidqi.suara.playback
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
 import android.os.Build
@@ -12,15 +14,19 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.za.sidqi.suara.data.FavoriteEntity
 import com.za.sidqi.suara.data.SuaraDatabase
+import com.za.sidqi.suara.data.TrackEntity
 import com.za.sidqi.suara.widget.WidgetRenderer
 import com.za.sidqi.suara.widget.WidgetSnapshot
 import com.za.sidqi.suara.widget.WidgetState
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,8 +34,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 class PlaybackService : MediaSessionService() {
     companion object {
@@ -50,6 +59,10 @@ class PlaybackService : MediaSessionService() {
     private var eqSessionId = -1
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var widgetAnimationJob: Job? = null
+    private var visualizer: EqVisualizer? = null
+    private var visualizerSessionId = -1
+    private var restoreDeferred: CompletableDeferred<Unit>? = null
+    private val syntheticHeights = FloatArray(28) { 8f }
 
     private val dynamicsCount = 10
     private val dynamicsCutoffs = floatArrayOf(
@@ -59,11 +72,13 @@ class PlaybackService : MediaSessionService() {
     private val playerListener = object : Player.Listener {
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
             attachEqualizer(audioSessionId)
+            attachVisualizer(audioSessionId)
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_READY) {
                 attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
+                attachVisualizer(mediaSession?.player?.audioSessionId ?: -1)
             }
             publishWidgetState()
         }
@@ -71,6 +86,7 @@ class PlaybackService : MediaSessionService() {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
                 attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
+                attachVisualizer(mediaSession?.player?.audioSessionId ?: -1)
             }
             publishWidgetState()
         }
@@ -132,6 +148,10 @@ class PlaybackService : MediaSessionService() {
             }
         mediaSession = MediaSession.Builder(this, player).build()
         publishWidgetState()
+        serviceScope.launch {
+            restoreQueueIfNeeded()
+            publishWidgetState()
+        }
         ContextCompat.registerReceiver(
             this,
             controlReceiver,
@@ -154,7 +174,18 @@ class PlaybackService : MediaSessionService() {
             ACTION_WIDGET_TOGGLE -> {
                 val player = mediaSession?.player
                 if (player != null) {
-                    if (player.isPlaying) player.pause() else player.play()
+                    if (player.mediaItemCount == 0) {
+                        serviceScope.launch {
+                            restoreQueueIfNeeded()
+                            if (player.mediaItemCount > 0) {
+                                if (player.isPlaying) player.pause() else player.play()
+                                publishWidgetState()
+                            }
+                        }
+                    } else {
+                        if (player.isPlaying) player.pause() else player.play()
+                        publishWidgetState()
+                    }
                 }
             }
             ACTION_WIDGET_PREV -> mediaSession?.player?.seekToPrevious()
@@ -518,7 +549,9 @@ class PlaybackService : MediaSessionService() {
                 repeatMode = player.repeatMode,
                 trackId = trackId,
                 favorite = favorite,
-                preset = AudioSettings.eqPreset(this)
+                preset = AudioSettings.eqPreset(this),
+                heights = previous.heights,
+                live = previous.live
             )
         )
         sendWidgetBroadcast()
@@ -534,21 +567,120 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private suspend fun restoreQueueIfNeeded() {
+        val player = mediaSession?.player ?: return
+        if (player.mediaItemCount > 0) return
+        val running = restoreDeferred
+        if (running != null && !running.isCompleted) {
+            running.await()
+            return
+        }
+        val deferred = CompletableDeferred<Unit>()
+        restoreDeferred = deferred
+        try {
+            val dao = SuaraDatabase.get(this).dao()
+            val items = dao.observeQueue().first()
+            if (items.isNotEmpty()) {
+                val state = dao.playbackState()
+                val index = items.indexOfFirst { it.id == state?.lastTrackId }.coerceAtLeast(0)
+                player.setMediaItems(
+                    items.map(::toMediaItem),
+                    index,
+                    state?.lastPositionMs ?: 0L
+                )
+                player.repeatMode = state?.repeatMode ?: Player.REPEAT_MODE_OFF
+                player.shuffleModeEnabled = state?.shuffle ?: false
+                player.prepare()
+            }
+        } finally {
+            deferred.complete(Unit)
+            if (restoreDeferred === deferred) restoreDeferred = null
+        }
+    }
+
+    private fun toMediaItem(track: TrackEntity): MediaItem =
+        MediaItem.Builder()
+            .setUri(track.uri)
+            .setMediaId(track.id.toString())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.artist ?: "Artis tidak diketahui")
+                    .setAlbumTitle(track.album ?: "")
+                    .build()
+            )
+            .build()
+
+    private fun attachVisualizer(sessionId: Int) {
+        if (sessionId <= 0) {
+            visualizer?.stop()
+            visualizer = null
+            visualizerSessionId = -1
+            return
+        }
+        if (sessionId == visualizerSessionId && visualizer != null) return
+        visualizerSessionId = sessionId
+        visualizer?.stop()
+        visualizer = null
+        if (!AudioSettings.visualizerEnabled(this)) {
+            WidgetState.setHeights(this, IntArray(28), false)
+            visualizerSessionId = -1
+            return
+        }
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            WidgetState.setHeights(this, IntArray(28), false)
+            visualizerSessionId = -1
+            return
+        }
+        val engine = EqVisualizer(this) { heights ->
+            WidgetState.setHeights(this@PlaybackService, heights, true)
+            WidgetRenderer.updateAll(this@PlaybackService)
+        }
+        if (engine.start(sessionId)) {
+            visualizer = engine
+        } else {
+            WidgetState.setHeights(this, IntArray(28), false)
+            visualizerSessionId = -1
+        }
+    }
+
     private fun updateWidgetAnimation() {
         val playing = mediaSession?.player?.isPlaying == true
-        if (playing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (playing && visualizer == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (widgetAnimationJob?.isActive == true) return
             widgetAnimationJob = serviceScope.launch {
                 while (isActive) {
-                    WidgetRenderer.updateAll(this@PlaybackService, animated = true)
-                    delay(220)
+                    val heights = nextSyntheticHeights()
+                    WidgetState.setHeights(this@PlaybackService, heights, false)
+                    WidgetRenderer.updateAll(this@PlaybackService)
+                    delay(90)
                 }
             }
         } else {
             widgetAnimationJob?.cancel()
             widgetAnimationJob = null
-            WidgetRenderer.updateAll(this, animated = false)
+            if (!playing) {
+                WidgetState.setHeights(this, IntArray(28), false)
+                WidgetRenderer.updateAll(this)
+            }
         }
+    }
+
+    private fun nextSyntheticHeights(): IntArray {
+        val t = System.currentTimeMillis() / 1000f
+        val output = IntArray(28)
+        for (i in 0 until 28) {
+            val target = 7f +
+                abs(sin(t * 3.1f + i * 0.47f)) * 18f +
+                abs(sin(t * 1.3f + i * 0.19f)) * 5f
+            syntheticHeights[i] = syntheticHeights[i] * 0.6f + target * 0.4f
+            output[i] = syntheticHeights[i].roundToInt().coerceIn(5, 30)
+        }
+        return output
     }
 
     private fun toggleFavorite() {
@@ -585,6 +717,8 @@ class PlaybackService : MediaSessionService() {
         runCatching { unregisterReceiver(controlReceiver) }
         serviceScope.cancel()
         widgetAnimationJob = null
+        visualizer?.stop()
+        visualizer = null
         releaseEq()
         eqSessionId = -1
         mediaSession?.run {

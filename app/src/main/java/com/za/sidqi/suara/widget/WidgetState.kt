@@ -11,7 +11,9 @@ data class WidgetSnapshot(
     val repeatMode: Int,
     val trackId: Long,
     val favorite: Boolean,
-    val preset: String
+    val preset: String,
+    val heights: IntArray = IntArray(28),
+    val live: Boolean = false
 )
 
 object WidgetState {
@@ -27,6 +29,8 @@ object WidgetState {
     private const val KEY_TRACK_ID = "track_id"
     private const val KEY_FAVORITE = "favorite"
     private const val KEY_PRESET = "preset"
+    private const val KEY_HEIGHTS = "heights"
+    private const val KEY_LIVE = "live"
 
     fun read(context: Context): WidgetSnapshot {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -39,7 +43,9 @@ object WidgetState {
             repeatMode = prefs.getInt(KEY_REPEAT, 0),
             trackId = prefs.getLong(KEY_TRACK_ID, -1L),
             favorite = prefs.getBoolean(KEY_FAVORITE, false),
-            preset = prefs.getString(KEY_PRESET, "Datar") ?: "Datar"
+            preset = prefs.getString(KEY_PRESET, "Datar") ?: "Datar",
+            heights = parseHeights(prefs.getString(KEY_HEIGHTS, null)),
+            live = prefs.getBoolean(KEY_LIVE, false)
         )
     }
 
@@ -54,7 +60,22 @@ object WidgetState {
             .putLong(KEY_TRACK_ID, snapshot.trackId)
             .putBoolean(KEY_FAVORITE, snapshot.favorite)
             .putString(KEY_PRESET, snapshot.preset)
+            .putString(KEY_HEIGHTS, snapshot.heights.joinToString(","))
+            .putBoolean(KEY_LIVE, snapshot.live)
             .apply()
+    }
+
+    fun setHeights(context: Context, heights: IntArray, live: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_HEIGHTS, heights.joinToString(","))
+            .putBoolean(KEY_LIVE, live)
+            .apply()
+    }
+
+    private fun parseHeights(raw: String?): IntArray {
+        if (raw.isNullOrBlank()) return IntArray(28)
+        val values = raw.split(',').mapNotNull { it.toIntOrNull() }
+        return if (values.size == 28) values.toIntArray() else IntArray(28)
     }
 
     fun setFavorite(context: Context, favorite: Boolean) {

@@ -13,8 +13,6 @@ import androidx.media3.common.Player
 import com.za.sidqi.suara.R
 import com.za.sidqi.suara.playback.PlaybackService
 import com.za.sidqi.suara.ui.MainActivity
-import kotlin.math.abs
-import kotlin.math.sin
 
 object WidgetRenderer {
     private val barIds = intArrayOf(
@@ -85,7 +83,8 @@ object WidgetRenderer {
         views.setOnClickPendingIntent(R.id.widget_eq, openApp(context, openAudio = true))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            applyBarHeights(views, if (animated && state.isPlaying) animatedHeights() else staticHeights)
+            val heights = if (state.heights.any { it > 0 }) state.heights else staticHeights
+            applyBarHeights(views, heights)
         }
         return views
     }
@@ -98,15 +97,6 @@ object WidgetRenderer {
                 heights.getOrElse(index) { 8 }.toFloat(),
                 TypedValue.COMPLEX_UNIT_DIP
             )
-        }
-    }
-
-    private fun animatedHeights(): IntArray {
-        val t = System.currentTimeMillis() / 220.0
-        return IntArray(barIds.size) { index ->
-            val wave = abs(sin(t * 0.82 + index * 0.55))
-            val secondary = abs(sin(t * 0.31 + index * 0.21))
-            (6 + wave * 19 + secondary * 5).toInt().coerceIn(5, 30)
         }
     }
 

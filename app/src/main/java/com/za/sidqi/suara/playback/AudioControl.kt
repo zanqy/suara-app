@@ -52,6 +52,7 @@ object AudioSettings {
     private const val KEY_EQ_PREAMP = "eq_preamp"
     private const val KEY_EQ_MODE = "eq_mode"
     private const val KEY_MIX = "mix_mode"
+    private const val KEY_VISUALIZER = "visualizer"
 
     const val ACTION_EQ_ENABLED = "com.za.sidqi.suara.EQ_ENABLED"
     const val ACTION_EQ_PRESET = "com.za.sidqi.suara.EQ_PRESET"
@@ -182,6 +183,13 @@ object AudioSettings {
     fun setEqBands(context: Context, levels: IntArray) {
         val key = if (levels.size >= 10) KEY_EQ_BANDS_10 else KEY_EQ_BANDS_5
         prefs(context).edit().putString(key, levels.joinToString(",")).apply()
+    }
+
+    fun visualizerEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_VISUALIZER, true)
+
+    fun setVisualizerEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_VISUALIZER, enabled).apply()
     }
 
     fun mixMode(context: Context): Boolean = prefs(context).getBoolean(KEY_MIX, false)
