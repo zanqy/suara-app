@@ -105,6 +105,7 @@ import com.za.sidqi.suara.playback.AudioState
 import com.za.sidqi.suara.playback.EqBand
 import com.za.sidqi.suara.playback.EqState
 import com.za.sidqi.suara.data.TrackEntity
+import com.za.sidqi.suara.playback.PlaybackService
 import com.za.sidqi.suara.playback.PlayerHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -197,8 +198,17 @@ private val Plex = FontFamily(
 private val DmSans = FontFamily(Font(R.font.dm_sans))
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_OPEN_AUDIO = "open_audio"
+    }
+
+    private var openAudioRequest by mutableStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.getBooleanExtra(EXTRA_OPEN_AUDIO, false) == true) {
+            openAudioRequest = 1
+        }
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -210,15 +220,23 @@ class MainActivity : ComponentActivity() {
                     onSurface = Ink
                 )
             ) {
-                SuaraRoot()
+                SuaraRoot(openAudioRequest = openAudioRequest)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_AUDIO, false)) {
+            openAudioRequest += 1
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SuaraRoot() {
+private fun SuaraRoot(openAudioRequest: Int = 0) {
     val context = LocalContext.current
     val vm: LibraryViewModel = viewModel()
     val tracks by vm.visibleTracks.collectAsState()
@@ -253,6 +271,10 @@ private fun SuaraRoot() {
 
     LaunchedEffect(Unit) {
         if (!hasPermission) launcher.launch(requiredPermissions()) else vm.scan()
+    }
+
+    LaunchedEffect(openAudioRequest) {
+        if (openAudioRequest > 0) showAudio = true
     }
 
     DisposableEffect(Unit) {
@@ -327,6 +349,10 @@ private fun SuaraRoot() {
         val player = controller ?: return
         player.addMediaItem(toMediaItem(track))
         vm.saveQueue(queue + track)
+    }
+
+    fun refreshWidget() {
+        AudioSettings.send(context, PlaybackService.ACTION_WIDGET_REFRESH)
     }
 
     Scaffold(
@@ -448,7 +474,10 @@ private fun SuaraRoot() {
                             onPlay = { playTrack(track, tracks) },
                             onQueue = { addToQueue(track) },
                             onAddToPlaylist = { playlistTarget = track },
-                            onFavorite = { vm.toggleFavorite(track) },
+                            onFavorite = {
+                                vm.toggleFavorite(track)
+                                refreshWidget()
+                            },
                             onDelete = { vm.removeMissing(track) }
                         )
                     }
@@ -484,7 +513,10 @@ private fun SuaraRoot() {
                         else -> Player.REPEAT_MODE_OFF
                     }
                 },
-                onFavorite = { vm.toggleFavorite(currentTrack!!) },
+                onFavorite = {
+                    vm.toggleFavorite(currentTrack!!)
+                    refreshWidget()
+                },
                 onQueue = { showQueue = true },
                 appVolume = appVolume,
                 onVolume = { value ->

@@ -104,6 +104,9 @@ interface SuaraDao {
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrack(id: Long)
 
+    @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE trackId = :trackId)")
+    suspend fun isFavorite(trackId: Long): Boolean
+
     @Query("SELECT trackId FROM favorites")
     fun observeFavoriteIds(): Flow<List<Long>>
 

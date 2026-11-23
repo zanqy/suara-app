@@ -16,9 +16,27 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.za.sidqi.suara.data.FavoriteEntity
+import com.za.sidqi.suara.data.SuaraDatabase
+import com.za.sidqi.suara.widget.WidgetSnapshot
+import com.za.sidqi.suara.widget.WidgetState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class PlaybackService : MediaSessionService() {
+    companion object {
+        const val ACTION_WIDGET_PREV = "com.za.sidqi.suara.WIDGET_PREV"
+        const val ACTION_WIDGET_NEXT = "com.za.sidqi.suara.WIDGET_NEXT"
+        const val ACTION_WIDGET_TOGGLE = "com.za.sidqi.suara.WIDGET_TOGGLE"
+        const val ACTION_WIDGET_REPEAT = "com.za.sidqi.suara.WIDGET_REPEAT"
+        const val ACTION_WIDGET_FAVORITE = "com.za.sidqi.suara.WIDGET_FAVORITE"
+        const val ACTION_WIDGET_REFRESH = "com.za.sidqi.suara.WIDGET_REFRESH"
+    }
+
     private enum class Engine { NONE, DYNAMICS, LEGACY }
 
     private var mediaSession: MediaSession? = null
@@ -26,6 +44,7 @@ class PlaybackService : MediaSessionService() {
     private var legacy: Equalizer? = null
     private var engine = Engine.NONE
     private var eqSessionId = -1
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val dynamicsCount = 10
     private val dynamicsCutoffs = floatArrayOf(
@@ -41,12 +60,22 @@ class PlaybackService : MediaSessionService() {
             if (playbackState == Player.STATE_READY) {
                 attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
             }
+            publishWidgetState()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
                 attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
             }
+            publishWidgetState()
+        }
+
+        override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            publishWidgetState()
+        }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            publishWidgetState()
         }
     }
 
@@ -78,6 +107,7 @@ class PlaybackService : MediaSessionService() {
                         publishEqState()
                     }
                 }
+                ACTION_WIDGET_REFRESH -> publishWidgetState()
                 AudioSettings.ACTION_MIX_MODE -> {
                     applyMixMode(intent.getBooleanExtra(AudioSettings.EXTRA_ENABLED, false))
                 }
@@ -96,6 +126,7 @@ class PlaybackService : MediaSessionService() {
                 addListener(playerListener)
             }
         mediaSession = MediaSession.Builder(this, player).build()
+        publishWidgetState()
         ContextCompat.registerReceiver(
             this,
             controlReceiver,
@@ -107,9 +138,35 @@ class PlaybackService : MediaSessionService() {
                 addAction(AudioSettings.ACTION_EQ_MODE)
                 addAction(AudioSettings.ACTION_EQ_REFRESH)
                 addAction(AudioSettings.ACTION_MIX_MODE)
+                addAction(ACTION_WIDGET_REFRESH)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_WIDGET_TOGGLE -> {
+                val player = mediaSession?.player
+                if (player != null) {
+                    if (player.isPlaying) player.pause() else player.play()
+                }
+            }
+            ACTION_WIDGET_PREV -> mediaSession?.player?.seekToPrevious()
+            ACTION_WIDGET_NEXT -> mediaSession?.player?.seekToNext()
+            ACTION_WIDGET_REPEAT -> {
+                val player = mediaSession?.player ?: return super.onStartCommand(intent, flags, startId)
+                player.repeatMode = when (player.repeatMode) {
+                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                    else -> Player.REPEAT_MODE_OFF
+                }
+                publishWidgetState()
+            }
+            ACTION_WIDGET_FAVORITE -> toggleFavorite()
+            ACTION_WIDGET_REFRESH -> publishWidgetState()
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -434,6 +491,65 @@ class PlaybackService : MediaSessionService() {
     private fun presetLevelsPreamp(preset: String): Int =
         AudioSettings.presetSpec(preset).preampMb
 
+    private fun publishWidgetState() {
+        val player = mediaSession?.player ?: return
+        val item = player.currentMediaItem
+        val metadata = item?.mediaMetadata
+        val title = metadata?.title?.toString()?.takeIf { it.isNotBlank() }
+            ?: "Belum ada lagu"
+        val artist = metadata?.artist?.toString()?.takeIf { it.isNotBlank() }
+            ?: "Tap untuk membuka Suara"
+        val trackId = item?.mediaId?.toLongOrNull() ?: -1L
+        val previous = WidgetState.read(this)
+        val favorite = if (previous.trackId == trackId) previous.favorite else false
+        WidgetState.write(
+            this,
+            WidgetSnapshot(
+                title = title,
+                artist = artist,
+                durationMs = player.duration.coerceAtLeast(0),
+                positionMs = player.currentPosition.coerceAtLeast(0),
+                isPlaying = player.isPlaying,
+                repeatMode = player.repeatMode,
+                trackId = trackId,
+                favorite = favorite,
+                preset = AudioSettings.eqPreset(this)
+            )
+        )
+        sendWidgetBroadcast()
+        if (trackId > 0) {
+            serviceScope.launch {
+                val fav = runCatching {
+                    SuaraDatabase.get(this@PlaybackService).dao().isFavorite(trackId)
+                }.getOrDefault(false)
+                WidgetState.setFavorite(this@PlaybackService, fav)
+                sendWidgetBroadcast()
+            }
+        }
+    }
+
+    private fun toggleFavorite() {
+        val trackId = mediaSession?.player?.currentMediaItem?.mediaId?.toLongOrNull() ?: return
+        serviceScope.launch {
+            val dao = SuaraDatabase.get(this@PlaybackService).dao()
+            val favorite = runCatching { dao.isFavorite(trackId) }.getOrDefault(false)
+            if (favorite) {
+                dao.removeFavorite(trackId)
+            } else {
+                dao.addFavorite(FavoriteEntity(trackId, System.currentTimeMillis()))
+            }
+            WidgetState.setFavorite(this@PlaybackService, !favorite)
+            sendWidgetBroadcast()
+        }
+    }
+
+    private fun sendWidgetBroadcast() {
+        sendBroadcast(
+            Intent(this, com.za.sidqi.suara.widget.SuaraWidgetProvider::class.java)
+                .setAction(WidgetState.ACTION_STATE)
+        )
+    }
+
     private fun releaseEq() {
         runCatching { dynamics?.release() }
         runCatching { legacy?.release() }
@@ -444,6 +560,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(controlReceiver) }
+        serviceScope.cancel()
         releaseEq()
         eqSessionId = -1
         mediaSession?.run {
