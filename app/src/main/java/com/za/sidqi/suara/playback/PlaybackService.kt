@@ -622,14 +622,8 @@ class PlaybackService : MediaSessionService() {
             .build()
 
     private fun ensureEnvelope(mediaId: String?) {
-        val trackId = mediaId?.toLongOrNull() ?: return
-        if (RhythmEnvelope.get(trackId) != null) return
-        serviceScope.launch {
-            val track = runCatching {
-                SuaraDatabase.get(this@PlaybackService).dao().trackById(trackId)
-            }.getOrNull() ?: return@launch
-            RhythmEnvelope.analyze(this@PlaybackService, track)
-        }
+        // DIMATIKAN sementara: analisis MediaCodec menyebabkan crash saat play pada beberapa perangkat.
+        // Diperbaiki lagi setelah logcat tersedia.
     }
 
     private fun attachVisualizer(sessionId: Int) {
@@ -682,14 +676,7 @@ class PlaybackService : MediaSessionService() {
                 while (isActive) {
                     delay(90)
                     if (visualizer?.isLive() == true && !fftSilent) continue
-                    val player = mediaSession?.player
-                    val trackId = player?.currentMediaItem?.mediaId?.toLongOrNull() ?: -1L
-                    val envelope = RhythmEnvelope.get(trackId)
-                    val heights = if (envelope != null && envelope.isNotEmpty()) {
-                        heightsFromEnvelope(envelope, player?.currentPosition ?: 0L)
-                    } else {
-                        nextSyntheticHeights()
-                    }
+                    val heights = nextSyntheticHeights()
                     WidgetState.setHeights(this@PlaybackService, heights, false)
                     WidgetRenderer.updateAll(this@PlaybackService)
                 }
