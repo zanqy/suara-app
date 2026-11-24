@@ -152,7 +152,10 @@ class PlaybackService : MediaSessionService() {
                 }
                 ClipActions.ACTION_START -> startClip(
                     intent.getLongExtra(ClipActions.EXTRA_TRACK_ID, -1L),
-                    intent.getStringExtra(ClipActions.EXTRA_CLIP_ID)
+                    intent.getStringExtra(ClipActions.EXTRA_CLIP_ID),
+                    intent.getLongExtra(ClipActions.EXTRA_START_MS, 0L),
+                    intent.getLongExtra(ClipActions.EXTRA_END_MS, 0L),
+                    intent.getIntExtra(ClipActions.EXTRA_REPEAT, 0)
                 )
                 ClipActions.ACTION_NEXT -> nextClip()
                 ClipActions.ACTION_PREV -> previousClip()
@@ -587,11 +590,33 @@ class PlaybackService : MediaSessionService() {
         )
     }
 
-    private fun startClip(trackId: Long, clipId: String?) {
+    private fun startClip(
+        trackId: Long,
+        clipId: String?,
+        previewStart: Long = 0L,
+        previewEnd: Long = 0L,
+        previewRepeat: Int = 0
+    ) {
         if (trackId <= 0L) return
         serviceScope.launch {
             val dao = SuaraDatabase.get(this@PlaybackService).dao()
-            val all = dao.clipsForTrack(trackId).filter { it.enabled }
+            val all = if (previewStart > 0L && previewEnd > previewStart + 1000L) {
+                listOf(
+                    ClipEntity(
+                        id = "__preview__",
+                        trackId = trackId,
+                        name = "Preview",
+                        startMs = previewStart,
+                        endMs = previewEnd,
+                        repeatLimit = previewRepeat,
+                        position = 0
+                    )
+                )
+            } else {
+                dao.clipsForTrack(trackId).filter {
+                    it.enabled && it.endMs > it.startMs + 1000L
+                }
+            }
             if (all.isEmpty()) {
                 stopClip()
                 return@launch
@@ -629,20 +654,21 @@ class PlaybackService : MediaSessionService() {
         clipLoopCount = 0
         val player = mediaSession?.player ?: return
         player.seekTo(clip.startMs.coerceAtLeast(0))
-        clipGuardUntil = SystemClock.elapsedRealtime() + 400L
+        clipGuardUntil = SystemClock.elapsedRealtime() + 800L
         publishClipState(clip.startMs)
     }
 
     private fun handleClipBoundary() {
+        if (SystemClock.elapsedRealtime() < clipGuardUntil) return
         val clip = clipChain.getOrNull(clipIndex) ?: return
         val player = mediaSession?.player ?: return
         val loops = clip.repeatLimit
         if (loops <= 0 || clipLoopCount + 1 < loops) {
             clipLoopCount++
             player.seekTo(clip.startMs.coerceAtLeast(0))
-            clipGuardUntil = SystemClock.elapsedRealtime() + 400L
+            clipGuardUntil = SystemClock.elapsedRealtime() + 800L
             publishClipState(clip.startMs)
-        } else {
+            } else {
             val next = (clipIndex + 1) % clipChain.size
             enterClipAt(next)
         }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -323,7 +324,12 @@ private fun SuaraRoot(
     var showClips by rememberSaveable { mutableStateOf(false) }
     val allClips by vm.clips.collectAsState()
     val clipRuntime by ClipState.state.collectAsState()
+    val waveform by vm.waveform.collectAsState()
     val trackClips = allClips.filter { it.trackId == currentTrack?.id }
+
+    LaunchedEffect(currentTrack?.id) {
+        currentTrack?.let { vm.loadWaveform(it) }
+    }
 
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -694,6 +700,15 @@ private fun SuaraRoot(
                     track = currentTrack!!,
                     clips = trackClips,
                     runtime = clipRuntime,
+                    waveform = waveform,
+                    onPreview = { start, end, repeat ->
+                        AudioSettings.send(context, ClipActions.ACTION_START) {
+                            putExtra(ClipActions.EXTRA_TRACK_ID, currentTrack!!.id)
+                            putExtra(ClipActions.EXTRA_START_MS, start)
+                            putExtra(ClipActions.EXTRA_END_MS, end)
+                            putExtra(ClipActions.EXTRA_REPEAT, repeat)
+                        }
+                    },
                     onSave = { id, name, start, end, repeat ->
                         vm.saveClip(
                             ClipEntity(
@@ -1910,6 +1925,8 @@ private fun ClipEditorScreen(
     track: TrackEntity,
     clips: List<ClipEntity>,
     runtime: ClipRuntime,
+    waveform: FloatArray?,
+    onPreview: (Long, Long, Int) -> Unit,
     onSave: (String, String, Long, Long, Int) -> Unit,
     onDelete: (String) -> Unit,
     onMove: (Int, Int) -> Unit,
@@ -1943,7 +1960,6 @@ private fun ClipEditorScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 18.dp)
@@ -1960,9 +1976,11 @@ private fun ClipEditorScreen(
         Text("Tentukan awal dan akhir klip", fontFamily = Fraunces, fontSize = 16.sp, color = Ink)
         Spacer(Modifier.height(14.dp))
 
-        val heights = remember(track.id) {
+        val fallbackHeights = remember(track.id) {
             List(84) { i -> 0.16f + 0.62f * abs(kotlin.math.sin(i * 0.41f + (track.id % 13) * 0.31f)) }
         }
+        val heights: List<Float> = waveform?.takeIf { it.size == fallbackHeights.size }?.toList()
+            ?: fallbackHeights
         Box(
             Modifier
                 .fillMaxWidth()
@@ -1973,14 +1991,14 @@ private fun ClipEditorScreen(
             Canvas(
                 modifier = Modifier.matchParentSize().pointerInput(duration) {
                     var handle = -1
-                    detectDragGestures(
+                    detectHorizontalDragGestures(
                         onDragStart = { off ->
                             val fraction = (off.x / size.width).coerceIn(0f, 1f)
                             val sf = latestStart.toFloat() / duration
                             val ef = latestEnd.toFloat() / duration
                             handle = if (abs(fraction - sf) <= abs(fraction - ef)) 0 else 1
                         },
-                        onDrag = { change, _ ->
+                        onHorizontalDrag = { change, _ ->
                             val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
                             val ms = (fraction * duration).toLong()
                             if (handle == 0) {
@@ -1988,6 +2006,7 @@ private fun ClipEditorScreen(
                             } else if (handle == 1) {
                                 endMs = ms.coerceAtLeast(latestStart + 3000L).coerceAtMost(duration)
                             }
+                            change.consume()
                         }
                     )
                 }
@@ -2085,8 +2104,7 @@ private fun ClipEditorScreen(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { editingId?.let(onPlay) },
-                enabled = editingId != null,
+                onClick = { onPreview(startMs, endMs, repeatLimit) },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Surface, contentColor = Ink,
@@ -2114,8 +2132,14 @@ private fun ClipEditorScreen(
                 Text("KELUAR DARI KLIP", fontFamily = Plex, fontSize = 10.sp, color = Coral)
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(10.dp))
 
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
         Text(
             "RANTAI KLIP · ${clips.size}",
             fontFamily = Plex, fontSize = 9.sp, color = Placeholder
@@ -2169,6 +2193,7 @@ private fun ClipEditorScreen(
             editingId = null; name = "Klip baru"; startMs = 0L
             endMs = duration.coerceAtMost(60000L); repeatLimit = 0
         }) { Text("＋ KLIP BARU", fontFamily = Plex, fontSize = 10.sp, color = Coral) }
+        }
     }
 }
 

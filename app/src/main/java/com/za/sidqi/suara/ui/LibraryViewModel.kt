@@ -16,9 +16,11 @@ import com.za.sidqi.suara.data.PlaylistTrackEntity
 import com.za.sidqi.suara.data.QueueEntity
 import com.za.sidqi.suara.data.SuaraDatabase
 import com.za.sidqi.suara.data.TrackEntity
+import com.za.sidqi.suara.data.WaveformLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import android.content.Context
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -56,6 +58,16 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     val playlists: StateFlow<List<PlaylistSummary>> = dao.observePlaylists().stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
     )
+
+    val waveform = MutableStateFlow<FloatArray?>(null)
+
+    fun loadWaveform(track: TrackEntity, bars: Int = 84) {
+        viewModelScope.launch {
+            waveform.value = withContextIo {
+                WaveformLoader.load(getApplication<Application>(), track.uri, bars)
+            }
+        }
+    }
 
     val query = MutableStateFlow("")
     val filter = MutableStateFlow(SourceFilter.ALL)

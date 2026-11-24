@@ -53,4 +53,7 @@ object ClipActions {
 
     const val EXTRA_TRACK_ID = "clip_track_id"
     const val EXTRA_CLIP_ID = "clip_id"
+    const val EXTRA_START_MS = "clip_start_ms"
+    const val EXTRA_END_MS = "clip_end_ms"
+    const val EXTRA_REPEAT = "clip_repeat"
 }
