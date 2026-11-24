@@ -67,6 +67,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -688,12 +689,7 @@ private fun SuaraRoot(
                 decorFitsSystemWindows = false
             )
         ) {
-            Surface(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                color = Bg
-            ) {
+            Surface(Modifier.fillMaxSize(), color = Bg) {
                 ClipEditorScreen(
                     track = currentTrack!!,
                     clips = trackClips,
@@ -1027,8 +1023,8 @@ private fun NowPlaying(
             .padding(horizontal = 24.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ArtBlock(track, 190.dp)
-        Spacer(Modifier.height(18.dp))
+        ArtBlock(track, if (clips.isNotEmpty()) 148.dp else 190.dp)
+        Spacer(Modifier.height(if (clips.isNotEmpty()) 10.dp else 18.dp))
         Text(track.title, fontFamily = Fraunces, fontSize = 22.sp, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(track.artist ?: "Artis tidak diketahui", fontFamily = Plex, fontSize = 11.sp, color = Muted)
         Spacer(Modifier.height(18.dp))
@@ -1202,7 +1198,7 @@ private fun NowPlaying(
                 Text("ANTREAN", fontFamily = Plex, fontSize = 10.sp, color = Muted)
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(if (clips.isNotEmpty()) 8.dp else 20.dp))
     }
 }
 
@@ -1927,8 +1923,9 @@ private fun ClipEditorScreen(
     var startMs by remember { mutableStateOf(0L) }
     var endMs by remember { mutableStateOf(0L) }
     var repeatLimit by remember { mutableStateOf(0) }
-    var dragHandle by remember { mutableStateOf(-1) }
     val duration = track.durationMs.coerceAtLeast(1000L)
+    val latestStart by rememberUpdatedState(startMs)
+    val latestEnd by rememberUpdatedState(endMs)
     val repeatChoices = listOf(0, 2, 3, 5, 10)
 
     LaunchedEffect(clips) {
@@ -1945,9 +1942,11 @@ private fun ClipEditorScreen(
 
     Column(
         Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 18.dp)
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .statusBarsPadding()
             .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Klip", fontFamily = Fraunces, fontSize = 30.sp, color = Ink)
@@ -1972,21 +1971,22 @@ private fun ClipEditorScreen(
                 .background(SearchBg)
         ) {
             Canvas(
-                modifier = Modifier.matchParentSize().pointerInput(startMs, endMs, duration) {
+                modifier = Modifier.matchParentSize().pointerInput(duration) {
+                    var handle = -1
                     detectDragGestures(
                         onDragStart = { off ->
                             val fraction = (off.x / size.width).coerceIn(0f, 1f)
-                            val sf = startMs.toFloat() / duration
-                            val ef = endMs.toFloat() / duration
-                            dragHandle = if (abs(fraction - sf) <= abs(fraction - ef)) 0 else 1
+                            val sf = latestStart.toFloat() / duration
+                            val ef = latestEnd.toFloat() / duration
+                            handle = if (abs(fraction - sf) <= abs(fraction - ef)) 0 else 1
                         },
                         onDrag = { change, _ ->
                             val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
                             val ms = (fraction * duration).toLong()
-                            if (dragHandle == 0) {
-                                startMs = ms.coerceAtLeast(0L).coerceAtMost(endMs - 3000L)
-                            } else if (dragHandle == 1) {
-                                endMs = ms.coerceAtLeast(startMs + 3000L).coerceAtMost(duration)
+                            if (handle == 0) {
+                                startMs = ms.coerceIn(0L, (latestEnd - 3000L).coerceAtLeast(0L))
+                            } else if (handle == 1) {
+                                endMs = ms.coerceAtLeast(latestStart + 3000L).coerceAtMost(duration)
                             }
                         }
                     )
