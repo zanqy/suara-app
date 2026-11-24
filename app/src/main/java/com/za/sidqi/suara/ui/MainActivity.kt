@@ -100,8 +100,13 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import com.za.sidqi.suara.R
+import com.za.sidqi.suara.data.ClipEntity
 import com.za.sidqi.suara.data.PlaylistSummary
 import com.za.sidqi.suara.playback.AudioSettings
+import com.za.sidqi.suara.playback.ClipActions
+import com.za.sidqi.suara.playback.ClipRuntime
+import com.za.sidqi.suara.playback.ClipState
+import com.za.sidqi.suara.playback.formatClipTime
 import com.za.sidqi.suara.playback.AudioState
 import com.za.sidqi.suara.playback.EqBand
 import com.za.sidqi.suara.playback.EqState
@@ -111,7 +116,9 @@ import com.za.sidqi.suara.playback.PlayerHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import java.util.UUID
 
 private var Bg by mutableStateOf(Color(0xFF0B0D0B))
 private var Surface by mutableStateOf(Color(0xFF171B17))
@@ -312,6 +319,10 @@ private fun SuaraRoot(
     var positionMs by remember { mutableStateOf(0L) }
     var durationMs by remember { mutableStateOf(0L) }
     var restored by remember { mutableStateOf(false) }
+    var showClips by rememberSaveable { mutableStateOf(false) }
+    val allClips by vm.clips.collectAsState()
+    val clipRuntime by ClipState.state.collectAsState()
+    val trackClips = allClips.filter { it.trackId == currentTrack?.id }
 
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -561,8 +572,16 @@ private fun SuaraRoot(
                 repeatMode = controller?.repeatMode ?: Player.REPEAT_MODE_OFF,
                 onSeek = { controller?.seekTo(it) },
                 onToggle = { if (isPlaying) controller?.pause() else controller?.play() },
-                onPrev = { controller?.seekToPrevious() },
-                onNext = { controller?.seekToNext() },
+                onPrev = {
+                    if (clipRuntime.active) {
+                        AudioSettings.send(context, ClipActions.ACTION_PREV)
+                    } else controller?.seekToPrevious()
+                },
+                onNext = {
+                    if (clipRuntime.active) {
+                        AudioSettings.send(context, ClipActions.ACTION_NEXT)
+                    } else controller?.seekToNext()
+                },
                 onShuffle = {
                     controller?.shuffleModeEnabled = !(controller?.shuffleModeEnabled ?: false)
                 },
@@ -578,6 +597,16 @@ private fun SuaraRoot(
                     refreshWidget()
                 },
                 onQueue = { showQueue = true },
+                clips = trackClips,
+                clipRuntime = clipRuntime,
+                onOpenClips = { showClips = true },
+                onSelectClip = { id ->
+                    AudioSettings.send(context, ClipActions.ACTION_START) {
+                        putExtra(ClipActions.EXTRA_TRACK_ID, currentTrack!!.id)
+                        putExtra(ClipActions.EXTRA_CLIP_ID, id)
+                    }
+                },
+                onClipStop = { AudioSettings.send(context, ClipActions.ACTION_STOP) },
                 appVolume = appVolume,
                 onVolume = { value ->
                     appVolume = value
@@ -646,6 +675,61 @@ private fun SuaraRoot(
                         }
                     },
                     onBack = { showAudio = false }
+                )
+            }
+        }
+    }
+
+    if (showClips && currentTrack != null) {
+        Dialog(
+            onDismissRequest = { showClips = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Surface(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                color = Bg
+            ) {
+                ClipEditorScreen(
+                    track = currentTrack!!,
+                    clips = trackClips,
+                    runtime = clipRuntime,
+                    onSave = { id, name, start, end, repeat ->
+                        vm.saveClip(
+                            ClipEntity(
+                                id = id,
+                                trackId = currentTrack!!.id,
+                                name = name,
+                                startMs = start,
+                                endMs = end,
+                                repeatLimit = repeat,
+                                position = if (id.isEmpty()) trackClips.size else
+                                    trackClips.firstOrNull { it.id == id }?.position ?: trackClips.size,
+                                enabled = true
+                            )
+                        )
+                        AudioSettings.send(context, ClipActions.ACTION_RELOAD)
+                    },
+                    onDelete = { id ->
+                        vm.deleteClip(id, currentTrack!!.id)
+                        AudioSettings.send(context, ClipActions.ACTION_RELOAD)
+                    },
+                    onMove = { index, delta ->
+                        vm.moveClip(trackClips, index, delta, currentTrack!!.id)
+                        AudioSettings.send(context, ClipActions.ACTION_RELOAD)
+                    },
+                    onPlay = { id ->
+                        AudioSettings.send(context, ClipActions.ACTION_START) {
+                            putExtra(ClipActions.EXTRA_TRACK_ID, currentTrack!!.id)
+                            putExtra(ClipActions.EXTRA_CLIP_ID, id)
+                        }
+                    },
+                    onStop = { AudioSettings.send(context, ClipActions.ACTION_STOP) },
+                    onBack = { showClips = false }
                 )
             }
         }
@@ -929,6 +1013,11 @@ private fun NowPlaying(
     onRepeat: () -> Unit,
     onFavorite: () -> Unit,
     onQueue: () -> Unit,
+    clips: List<ClipEntity>,
+    clipRuntime: ClipRuntime,
+    onOpenClips: () -> Unit,
+    onSelectClip: (String) -> Unit,
+    onClipStop: () -> Unit,
     appVolume: Float,
     onVolume: (Float) -> Unit
 ) {
@@ -957,7 +1046,75 @@ private fun NowPlaying(
             Text(formatDuration(positionMs), fontFamily = Plex, fontSize = 10.sp, color = Muted)
             Text(formatDuration(durationMs), fontFamily = Plex, fontSize = 10.sp, color = Muted)
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "KLIP · ${clips.size} AKTIF",
+                fontFamily = Plex, fontSize = 10.sp,
+                color = if (clipRuntime.active) Coral else Muted
+            )
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onOpenClips) {
+                Text("ATUR", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+            }
+        }
+        if (clips.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                clips.forEachIndexed { index, clip ->
+                    val active = clipRuntime.active && clipRuntime.clipId == clip.id
+                    Box(
+                        modifier = Modifier
+                            .width(104.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (active) SearchBg else Surface)
+                            .border(
+                                1.dp,
+                                if (active) Coral else Line,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onSelectClip(clip.id) }
+                            .padding(horizontal = 9.dp, vertical = 8.dp)
+                    ) {
+                        Column {
+                            Text(
+                                "${(index + 1).toString().padStart(2, '0')}${if (active) " · MAIN" else ""}",
+                                fontFamily = Plex, fontSize = 8.sp,
+                                color = if (active) Coral else Placeholder
+                            )
+                            Text(
+                                clip.name,
+                                fontFamily = Fraunces, fontSize = 13.sp, color = Ink,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "${formatClipTime(clip.endMs - clip.startMs)} · ${if (clip.repeatLimit <= 0) "∞" else "${clip.repeatLimit}×"}",
+                                fontFamily = Plex, fontSize = 8.sp, color = Muted
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (clipRuntime.active) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "KLIP ${(clipRuntime.index + 1).toString().padStart(2, '0')}/${clipRuntime.total.toString().padStart(2, '0')} · ULANG ${clipRuntime.repeatLabel}",
+                    fontFamily = Plex, fontSize = 9.sp, color = Muted
+                )
+                Spacer(Modifier.weight(1f))
+                Text(clipRuntime.progressLabel, fontFamily = Plex, fontSize = 10.sp, color = Amber)
+                TextButton(onClick = onClipStop) {
+                    Text("KELUAR", fontFamily = Plex, fontSize = 9.sp, color = Coral)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (appVolume <= 0.01f) SuaraIcons.VolumeOff else SuaraIcons.VolumeUp,
@@ -1750,6 +1907,293 @@ private fun AddToPlaylistDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("BATAL") } }
     )
+}
+
+@Composable
+private fun ClipEditorScreen(
+    track: TrackEntity,
+    clips: List<ClipEntity>,
+    runtime: ClipRuntime,
+    onSave: (String, String, Long, Long, Int) -> Unit,
+    onDelete: (String) -> Unit,
+    onMove: (Int, Int) -> Unit,
+    onPlay: (String) -> Unit,
+    onStop: () -> Unit,
+    onBack: () -> Unit
+) {
+    var editingId by remember { mutableStateOf<String?>(null) }
+    var initialized by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("Klip baru") }
+    var startMs by remember { mutableStateOf(0L) }
+    var endMs by remember { mutableStateOf(0L) }
+    var repeatLimit by remember { mutableStateOf(0) }
+    var dragHandle by remember { mutableStateOf(-1) }
+    val duration = track.durationMs.coerceAtLeast(1000L)
+    val repeatChoices = listOf(0, 2, 3, 5, 10)
+
+    LaunchedEffect(clips) {
+        if (!initialized && clips.isNotEmpty()) {
+            val first = clips.first()
+            editingId = first.id
+            name = first.name
+            startMs = first.startMs
+            endMs = first.endMs
+            repeatLimit = first.repeatLimit
+            initialized = true
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 18.dp)
+            .navigationBarsPadding()
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Klip", fontFamily = Fraunces, fontSize = 30.sp, color = Ink)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text("TUTUP", fontFamily = Plex, fontSize = 10.sp, color = Muted) }
+        }
+        Text(
+            "${track.title.uppercase()} · ${formatClipTime(duration)}",
+            fontFamily = Plex, fontSize = 9.sp, color = Coral
+        )
+        Text("Tentukan awal dan akhir klip", fontFamily = Fraunces, fontSize = 16.sp, color = Ink)
+        Spacer(Modifier.height(14.dp))
+
+        val heights = remember(track.id) {
+            List(84) { i -> 0.16f + 0.62f * abs(kotlin.math.sin(i * 0.41f + (track.id % 13) * 0.31f)) }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(SearchBg)
+        ) {
+            Canvas(
+                modifier = Modifier.matchParentSize().pointerInput(startMs, endMs, duration) {
+                    detectDragGestures(
+                        onDragStart = { off ->
+                            val fraction = (off.x / size.width).coerceIn(0f, 1f)
+                            val sf = startMs.toFloat() / duration
+                            val ef = endMs.toFloat() / duration
+                            dragHandle = if (abs(fraction - sf) <= abs(fraction - ef)) 0 else 1
+                        },
+                        onDrag = { change, _ ->
+                            val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                            val ms = (fraction * duration).toLong()
+                            if (dragHandle == 0) {
+                                startMs = ms.coerceAtLeast(0L).coerceAtMost(endMs - 3000L)
+                            } else if (dragHandle == 1) {
+                                endMs = ms.coerceAtLeast(startMs + 3000L).coerceAtMost(duration)
+                            }
+                        }
+                    )
+                }
+            ) {
+                val w = size.width
+                val h = size.height
+                val barW = w / heights.size
+                heights.forEachIndexed { i, value ->
+                    val x = i * barW + barW / 2f
+                    val ms = (i.toFloat() / heights.size) * duration
+                    val inside = ms >= startMs && ms <= endMs
+                    drawLine(
+                        color = if (inside) Amber else GraphMid,
+                        start = Offset(x, h * (1f - value) / 2f),
+                        end = Offset(x, h * (1f + value) / 2f),
+                        strokeWidth = barW * 0.62f
+                    )
+                }
+                val sx = (startMs.toFloat() / duration) * w
+                val ex = (endMs.toFloat() / duration) * w
+                drawLine(Coral, Offset(sx, 0f), Offset(sx, h), strokeWidth = 2.dp.toPx())
+                drawLine(Coral, Offset(ex, 0f), Offset(ex, h), strokeWidth = 2.dp.toPx())
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("A ${formatClipTime(startMs)}", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+            Text("B ${formatClipTime(endMs)}", fontFamily = Plex, fontSize = 10.sp, color = Amber)
+        }
+        Spacer(Modifier.height(10.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ClipTimeField(
+                label = "MULAI", value = startMs, modifier = Modifier.weight(1f),
+                onMinus = { startMs = (startMs - 5000L).coerceAtLeast(0L) },
+                onPlus = { startMs = (startMs + 5000L).coerceAtMost(endMs - 3000L) }
+            )
+            ClipTimeField(
+                label = "SELESAI", value = endMs, modifier = Modifier.weight(1f),
+                onMinus = { endMs = (endMs - 5000L).coerceAtLeast(startMs + 3000L) },
+                onPlus = { endMs = (endMs + 5000L).coerceAtMost(duration) }
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, Line, RoundedCornerShape(8.dp))
+                .background(Surface)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            Column {
+                Text("NAMA KLIP", fontFamily = Plex, fontSize = 8.sp, color = Placeholder)
+                BasicTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    textStyle = TextStyle(fontFamily = Fraunces, fontSize = 15.sp, color = Ink),
+                    cursorBrush = SolidColor(Coral),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, Line, RoundedCornerShape(8.dp))
+                .background(Surface)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "ULANG · ∞ = DI SINI TERUS",
+                fontFamily = Plex, fontSize = 8.sp, color = Placeholder,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = {
+                val i = repeatChoices.indexOf(repeatLimit).coerceAtLeast(0)
+                repeatLimit = repeatChoices[(i - 1 + repeatChoices.size) % repeatChoices.size]
+            }) { Text("−", fontFamily = Plex, fontSize = 16.sp, color = Muted) }
+            Text(
+                if (repeatLimit <= 0) "∞" else "$repeatLimit×",
+                fontFamily = Fraunces, fontSize = 16.sp, color = Amber
+            )
+            TextButton(onClick = {
+                val i = repeatChoices.indexOf(repeatLimit).coerceAtLeast(0)
+                repeatLimit = repeatChoices[(i + 1) % repeatChoices.size]
+            }) { Text("＋", fontFamily = Plex, fontSize = 16.sp, color = Muted) }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { editingId?.let(onPlay) },
+                enabled = editingId != null,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Surface, contentColor = Ink,
+                    disabledContainerColor = Surface, disabledContentColor = Placeholder
+                )
+            ) { Text("PREVIEW", fontFamily = Plex, fontSize = 10.sp) }
+            Button(
+                onClick = {
+                    val id = editingId ?: UUID.randomUUID().toString()
+                    onSave(
+                        id,
+                        name.trim().ifBlank { "Klip ${clips.size + 1}" },
+                        startMs,
+                        endMs,
+                        repeatLimit
+                    )
+                    editingId = id
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Coral, contentColor = OnAccent)
+            ) { Text("SIMPAN KLIP", fontFamily = Plex, fontSize = 10.sp) }
+        }
+        if (runtime.active) {
+            TextButton(onClick = onStop) {
+                Text("KELUAR DARI KLIP", fontFamily = Plex, fontSize = 10.sp, color = Coral)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            "RANTAI KLIP · ${clips.size}",
+            fontFamily = Plex, fontSize = 9.sp, color = Placeholder
+        )
+        Spacer(Modifier.height(6.dp))
+        if (clips.isEmpty()) {
+            Text("Belum ada klip. Geser handle atau tekan SIMPAN KLIP.", fontFamily = Fraunces, fontSize = 13.sp, color = Muted)
+        }
+        clips.forEachIndexed { index, clip ->
+            val active = runtime.active && runtime.clipId == clip.id
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, if (active) Coral else Line, RoundedCornerShape(8.dp))
+                    .background(if (active) SearchBg else Surface)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        (index + 1).toString().padStart(2, '0'),
+                        fontFamily = Plex, fontSize = 10.sp, color = Coral
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(clip.name, fontFamily = Fraunces, fontSize = 14.sp, color = Ink, modifier = Modifier.weight(1f))
+                    Text(
+                        "${formatClipTime(clip.endMs - clip.startMs)} · ${if (clip.repeatLimit <= 0) "∞" else "${clip.repeatLimit}×"}",
+                        fontFamily = Plex, fontSize = 9.sp, color = Muted
+                    )
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { onPlay(clip.id) }) { Text("PUTAR", fontFamily = Plex, fontSize = 9.sp, color = Coral) }
+                    TextButton(onClick = {
+                        editingId = clip.id; name = clip.name; startMs = clip.startMs
+                        endMs = clip.endMs; repeatLimit = clip.repeatLimit
+                    }) { Text("EDIT", fontFamily = Plex, fontSize = 9.sp, color = Muted) }
+                    TextButton(onClick = { onMove(index, -1) }) { Text("↑", fontFamily = Plex, fontSize = 12.sp, color = Muted) }
+                    TextButton(onClick = { onMove(index, 1) }) { Text("↓", fontFamily = Plex, fontSize = 12.sp, color = Muted) }
+                    TextButton(onClick = { onDelete(clip.id) }) { Text("HAPUS", fontFamily = Plex, fontSize = 9.sp, color = Muted) }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        TextButton(onClick = {
+            editingId = null; name = "Klip baru"; startMs = 0L
+            endMs = duration.coerceAtMost(60000L); repeatLimit = 0
+        }) { Text("＋ KLIP BARU", fontFamily = Plex, fontSize = 10.sp, color = Coral) }
+    }
+}
+
+@Composable
+private fun ClipTimeField(
+    label: String,
+    value: Long,
+    modifier: Modifier = Modifier,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Line, RoundedCornerShape(8.dp))
+            .background(Surface)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontFamily = Plex, fontSize = 8.sp, color = Placeholder)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(formatClipTime(value), fontFamily = Plex, fontSize = 14.sp, color = Ink, modifier = Modifier.weight(1f))
+            TextButton(onClick = onMinus) { Text("−", fontFamily = Plex, fontSize = 13.sp, color = Muted) }
+            TextButton(onClick = onPlus) { Text("＋", fontFamily = Plex, fontSize = 13.sp, color = Muted) }
+        }
+    }
 }
 
 private fun toMediaItem(track: TrackEntity): MediaItem =

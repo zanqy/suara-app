@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.za.sidqi.suara.data.ClipEntity
 import com.za.sidqi.suara.data.FavoriteEntity
 import com.za.sidqi.suara.data.MediaStoreScanner
 import com.za.sidqi.suara.data.PlaybackStateEntity
@@ -152,6 +153,38 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playlistTracks(id: Long): Flow<List<TrackEntity>> = dao.observePlaylistTracks(id)
+
+    val clips: StateFlow<List<ClipEntity>> = dao.observeAllClips().stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
+    )
+
+    fun observeClips(trackId: Long): Flow<List<ClipEntity>> = dao.observeClips(trackId)
+
+    fun saveClip(clip: ClipEntity) {
+        viewModelScope.launch { dao.upsertClip(clip) }
+    }
+
+    fun deleteClip(id: String, trackId: Long) {
+        viewModelScope.launch {
+            dao.deleteClip(id, trackId)
+            dao.clipsForTrack(trackId).forEachIndexed { index, clip ->
+                dao.setClipPosition(clip.id, trackId, index)
+            }
+        }
+    }
+
+    fun moveClip(clips: List<ClipEntity>, index: Int, delta: Int, trackId: Long) {
+        val target = index + delta
+        if (index !in clips.indices || target !in clips.indices) return
+        viewModelScope.launch {
+            val swapped = clips.toMutableList().also {
+                val a = it[index]
+                it[index] = it[target]
+                it[target] = a
+            }
+            swapped.forEachIndexed { i, clip -> dao.setClipPosition(clip.id, trackId, i) }
+        }
+    }
 
     fun saveQueue(items: List<TrackEntity>) {
         viewModelScope.launch {

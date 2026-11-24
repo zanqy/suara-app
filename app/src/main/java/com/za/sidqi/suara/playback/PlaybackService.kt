@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
 import android.os.Build
+import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
@@ -20,6 +21,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.za.sidqi.suara.data.ClipEntity
 import com.za.sidqi.suara.data.FavoriteEntity
 import com.za.sidqi.suara.data.SuaraDatabase
 import com.za.sidqi.suara.data.TrackEntity
@@ -65,6 +67,14 @@ class PlaybackService : MediaSessionService() {
     private var restoreDeferred: CompletableDeferred<Unit>? = null
     private val syntheticHeights = FloatArray(28) { 8f }
 
+    private var clipChain: List<ClipEntity> = emptyList()
+    private var clipIndex = -1
+    private var clipTrackId = -1L
+    private var clipLoopCount = 0
+    private var clipGuardUntil = 0L
+    private var clipWatchdog: Job? = null
+    private var clipSavedRepeatMode = Player.REPEAT_MODE_OFF
+
     private val dynamicsCount = 10
     private val dynamicsCutoffs = floatArrayOf(
         31f, 62f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f
@@ -77,6 +87,9 @@ class PlaybackService : MediaSessionService() {
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED && clipChain.isNotEmpty()) {
+                handleClipBoundary()
+            }
             if (playbackState == Player.STATE_READY) {
                 attachEqualizer(mediaSession?.player?.audioSessionId ?: -1)
                 attachVisualizer(mediaSession?.player?.audioSessionId ?: -1)
@@ -94,6 +107,8 @@ class PlaybackService : MediaSessionService() {
         }
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            val playingId = mediaItem?.mediaId?.toLongOrNull() ?: -1L
+            if (clipChain.isNotEmpty() && playingId != clipTrackId) stopClip()
             ensureEnvelope(mediaItem?.mediaId)
             publishWidgetState()
         }
@@ -135,6 +150,14 @@ class PlaybackService : MediaSessionService() {
                     publishWidgetState()
                     attachVisualizer(mediaSession?.player?.audioSessionId ?: -1)
                 }
+                ClipActions.ACTION_START -> startClip(
+                    intent.getLongExtra(ClipActions.EXTRA_TRACK_ID, -1L),
+                    intent.getStringExtra(ClipActions.EXTRA_CLIP_ID)
+                )
+                ClipActions.ACTION_NEXT -> nextClip()
+                ClipActions.ACTION_PREV -> previousClip()
+                ClipActions.ACTION_STOP -> stopClip()
+                ClipActions.ACTION_RELOAD -> reloadClipChain()
                 AudioSettings.ACTION_MIX_MODE -> {
                     applyMixMode(intent.getBooleanExtra(AudioSettings.EXTRA_ENABLED, false))
                 }
@@ -170,6 +193,11 @@ class PlaybackService : MediaSessionService() {
                 addAction(AudioSettings.ACTION_EQ_REFRESH)
                 addAction(AudioSettings.ACTION_MIX_MODE)
                 addAction(ACTION_WIDGET_REFRESH)
+                addAction(ClipActions.ACTION_START)
+                addAction(ClipActions.ACTION_NEXT)
+                addAction(ClipActions.ACTION_PREV)
+                addAction(ClipActions.ACTION_STOP)
+                addAction(ClipActions.ACTION_RELOAD)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
@@ -194,8 +222,12 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
             }
-            ACTION_WIDGET_PREV -> mediaSession?.player?.seekToPrevious()
-            ACTION_WIDGET_NEXT -> mediaSession?.player?.seekToNext()
+            ACTION_WIDGET_PREV -> {
+                if (clipChain.isNotEmpty()) previousClip() else mediaSession?.player?.seekToPrevious()
+            }
+            ACTION_WIDGET_NEXT -> {
+                if (clipChain.isNotEmpty()) nextClip() else mediaSession?.player?.seekToNext()
+            }
             ACTION_WIDGET_REPEAT -> {
                 val player = mediaSession?.player ?: return super.onStartCommand(intent, flags, startId)
                 player.repeatMode = when (player.repeatMode) {
@@ -533,6 +565,161 @@ class PlaybackService : MediaSessionService() {
     private fun presetLevelsPreamp(preset: String): Int =
         AudioSettings.presetSpec(preset).preampMb
 
+    private fun publishClipState(position: Long) {
+        val clip = clipChain.getOrNull(clipIndex) ?: run {
+            ClipState.clear()
+            return
+        }
+        ClipState.publish(
+            ClipRuntime(
+                active = true,
+                trackId = clipTrackId,
+                clipId = clip.id,
+                name = clip.name,
+                startMs = clip.startMs,
+                endMs = clip.endMs,
+                index = clipIndex,
+                total = clipChain.size,
+                repeatLimit = clip.repeatLimit,
+                loopCount = clipLoopCount,
+                positionMs = position.coerceAtLeast(0)
+            )
+        )
+    }
+
+    private fun startClip(trackId: Long, clipId: String?) {
+        if (trackId <= 0L) return
+        serviceScope.launch {
+            val dao = SuaraDatabase.get(this@PlaybackService).dao()
+            val all = dao.clipsForTrack(trackId).filter { it.enabled }
+            if (all.isEmpty()) {
+                stopClip()
+                return@launch
+            }
+            val player = mediaSession?.player ?: return@launch
+            if (clipChain.isEmpty()) clipSavedRepeatMode = player.repeatMode
+            clipChain = all
+            clipTrackId = trackId
+
+            if (player.currentMediaItem?.mediaId != trackId.toString()) {
+                var index = (0 until player.mediaItemCount).firstOrNull {
+                    player.getMediaItemAt(it).mediaId == trackId.toString()
+                }
+                if (index == null) {
+                    val track = dao.trackById(trackId) ?: run {
+                        stopClip()
+                        return@launch
+                    }
+                    player.addMediaItem(toMediaItem(track))
+                    index = player.mediaItemCount - 1
+                }
+                player.seekTo(index, 0L)
+            }
+
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            val target = all.indexOfFirst { it.id == clipId }.let { if (it >= 0) it else 0 }
+            enterClipAt(target)
+            startClipWatchdog()
+        }
+    }
+
+    private fun enterClipAt(index: Int) {
+        val clip = clipChain.getOrNull(index) ?: return
+        clipIndex = index
+        clipLoopCount = 0
+        val player = mediaSession?.player ?: return
+        player.seekTo(clip.startMs.coerceAtLeast(0))
+        clipGuardUntil = SystemClock.elapsedRealtime() + 400L
+        publishClipState(clip.startMs)
+    }
+
+    private fun handleClipBoundary() {
+        val clip = clipChain.getOrNull(clipIndex) ?: return
+        val player = mediaSession?.player ?: return
+        val loops = clip.repeatLimit
+        if (loops <= 0 || clipLoopCount + 1 < loops) {
+            clipLoopCount++
+            player.seekTo(clip.startMs.coerceAtLeast(0))
+            clipGuardUntil = SystemClock.elapsedRealtime() + 400L
+            publishClipState(clip.startMs)
+        } else {
+            val next = (clipIndex + 1) % clipChain.size
+            enterClipAt(next)
+        }
+    }
+
+    private fun nextClip() {
+        if (clipChain.isEmpty()) return
+        enterClipAt((clipIndex + 1) % clipChain.size)
+    }
+
+    private fun previousClip() {
+        if (clipChain.isEmpty()) return
+        val player = mediaSession?.player ?: return
+        val clip = clipChain[clipIndex]
+        if (player.currentPosition - clip.startMs > 3000L) {
+            enterClipAt(clipIndex)
+        } else {
+            enterClipAt((clipIndex - 1 + clipChain.size) % clipChain.size)
+        }
+    }
+
+    private fun stopClip() {
+        clipWatchdog?.cancel()
+        clipWatchdog = null
+        clipChain = emptyList()
+        clipIndex = -1
+        clipTrackId = -1L
+        clipLoopCount = 0
+        mediaSession?.player?.repeatMode = clipSavedRepeatMode
+        ClipState.clear()
+    }
+
+    private fun reloadClipChain() {
+        if (clipChain.isEmpty()) return
+        serviceScope.launch {
+            val dao = SuaraDatabase.get(this@PlaybackService).dao()
+            val all = dao.clipsForTrack(clipTrackId).filter { it.enabled }
+            if (all.isEmpty()) {
+                stopClip()
+                return@launch
+            }
+            val currentId = clipChain.getOrNull(clipIndex)?.id
+            clipChain = all
+            val found = all.indexOfFirst { it.id == currentId }
+            if (found >= 0) {
+                clipIndex = found
+                clipLoopCount = 0
+                publishClipState(mediaSession?.player?.currentPosition ?: 0L)
+            } else {
+                enterClipAt(0)
+            }
+        }
+    }
+
+    private fun startClipWatchdog() {
+        clipWatchdog?.cancel()
+        clipWatchdog = serviceScope.launch {
+            while (isActive) {
+                val player = mediaSession?.player
+                if (player == null || clipChain.isEmpty()) break
+                if (player.isPlaying && SystemClock.elapsedRealtime() >= clipGuardUntil) {
+                    val clip = clipChain.getOrNull(clipIndex)
+                    if (clip != null) {
+                        val pos = player.currentPosition
+                        if (pos >= clip.endMs - 120L || pos < clip.startMs - 1500L) {
+                            handleClipBoundary()
+                        }
+                    }
+                }
+                if (clipChain.isNotEmpty()) {
+                    publishClipState(mediaSession?.player?.currentPosition ?: 0L)
+                }
+                delay(200L)
+            }
+        }
+    }
+
     private fun publishWidgetState() {
         runCatching { publishWidgetStateInternal() }
     }
@@ -749,6 +936,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        clipWatchdog?.cancel()
         runCatching { unregisterReceiver(controlReceiver) }
         serviceScope.cancel()
         widgetAnimationJob = null

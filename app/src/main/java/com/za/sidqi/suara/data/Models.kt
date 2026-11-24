@@ -78,6 +78,22 @@ data class PlaylistSummary(
     val trackCount: Int
 )
 
+@Entity(
+    tableName = "clips",
+    primaryKeys = ["id", "trackId"],
+    indices = [Index("trackId")]
+)
+data class ClipEntity(
+    val id: String,
+    val trackId: Long,
+    val name: String,
+    val startMs: Long,
+    val endMs: Long,
+    val repeatLimit: Int = 0,
+    val position: Int = 0,
+    val enabled: Boolean = true
+)
+
 @Dao
 interface SuaraDao {
     @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE ASC")
@@ -172,14 +188,36 @@ interface SuaraDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun savePlaybackState(state: PlaybackStateEntity)
+
+    @Query("SELECT * FROM clips ORDER BY trackId ASC, position ASC, id ASC")
+    fun observeAllClips(): Flow<List<ClipEntity>>
+
+    @Query("SELECT * FROM clips WHERE trackId = :trackId ORDER BY position ASC, id ASC")
+    fun observeClips(trackId: Long): Flow<List<ClipEntity>>
+
+    @Query("SELECT * FROM clips WHERE trackId = :trackId ORDER BY position ASC, id ASC")
+    suspend fun clipsForTrack(trackId: Long): List<ClipEntity>
+
+    @Query("SELECT * FROM clips WHERE id = :id AND trackId = :trackId LIMIT 1")
+    suspend fun clipById(id: String, trackId: Long): ClipEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertClip(clip: ClipEntity)
+
+    @Query("DELETE FROM clips WHERE id = :id AND trackId = :trackId")
+    suspend fun deleteClip(id: String, trackId: Long)
+
+    @Query("UPDATE clips SET position = :position WHERE id = :id AND trackId = :trackId")
+    suspend fun setClipPosition(id: String, trackId: Long, position: Int)
 }
 
 @Database(
     entities = [
         TrackEntity::class, FavoriteEntity::class, QueueEntity::class,
-        PlaybackStateEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class
+        PlaybackStateEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class,
+        ClipEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class SuaraDatabase : RoomDatabase() {
@@ -205,9 +243,22 @@ abstract class SuaraDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS clips (" +
+                        "id TEXT NOT NULL, trackId INTEGER NOT NULL, name TEXT NOT NULL, " +
+                        "startMs INTEGER NOT NULL, endMs INTEGER NOT NULL, " +
+                        "repeatLimit INTEGER NOT NULL, position INTEGER NOT NULL, " +
+                        "enabled INTEGER NOT NULL, PRIMARY KEY(id, trackId))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_clips_trackId ON clips(trackId)")
+            }
+        }
+
         fun get(context: Context): SuaraDatabase = instance ?: synchronized(this) {
             Room.databaseBuilder(context.applicationContext, SuaraDatabase::class.java, "suara.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 .also { instance = it }
         }

@@ -13,8 +13,8 @@ android {
         applicationId = "com.za.sidqi.suara"
         minSdk = 24
         targetSdk = 35
-        versionCode = 17
-        versionName = "2.4"
+        versionCode = 18
+        versionName = "2.5"
     }
 
     signingConfigs {
